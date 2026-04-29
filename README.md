@@ -1,10 +1,10 @@
 # OpenCode LLM Pricing Plugin
 
-**See pricing, context windows, and features for your last 3 LLMs per agent mode — in chat and in the sidebar.**
+**See pricing, context windows, and features for your active LLMs — in chat and in the sidebar.**
 
 A lightweight, no-config plugin that fetches fresh data from OpenRouter on startup. It gives you input/output costs (USD per million tokens), context length, and key capabilities while you work — both as chat tools and as a live sidebar panel.
 
-- ✅ Last 3 selected models per mode (most recent first)
+- ✅ Sidebar updates automatically as you switch models mid-session
 - ✅ Live sidebar panel showing Plan + Build pricing at a glance
 - ✅ Clean display names (no provider prefixes)
 - ✅ OpenCode Zen fallback when a model isn't in OpenRouter data
@@ -52,23 +52,21 @@ opencode
 
 ### Sidebar panel
 
-The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the top 3 most recently used models for each agent mode, updating on every model switch.
+The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the currently active model for each agent mode, updating automatically whenever a message completes (via `message.updated` events — the `AssistantMessage` carries the model actually used for that turn).
 
 ```
 LLM Pricing
 
-Plan
-→ Claude 3.5 Sonnet
-   $3.00 in / $15.00 out • 200K ctx
-  GPT-4o
-   $2.50 in / $10.00 out • 128K ctx
+▼ Plan
+   Claude Sonnet 4.5
+   $3.00 in / $15.00 out • 1000K ctx
 
-Build
-→ Claude 3.5 Sonnet
-   $3.00 in / $15.00 out • 200K ctx
+▼ Build
+   MiniMax M2.1
+   $0.20 in / $0.20 out • 1000K ctx
 ```
 
-The sidebar fetches OpenRouter data independently on mount (the TUI process cannot share state with the server plugin process).
+Section headers are clickable — click to collapse/expand (`▶`/`▼`). The sidebar fetches OpenRouter data independently on startup (the TUI process cannot share state with the server plugin process).
 
 ### Chat tools
 
@@ -80,11 +78,10 @@ Print pricing, context, and features for the last 3 LLMs in each mode:
 📊 LLM Pricing + Context + Features
 
 Plan Mode (most recent first):
-→ Claude 3.5 Sonnet: $3.00 in / $15.00 out • 200K ctx [tools, vision]
-  GPT-4o: $2.50 in / $10.00 out • 128K ctx [tools, json_object]
+→ Claude Sonnet 4.5: $3.00 in / $15.00 out • 1000K ctx [include_reasoning, max_tokens]
 
 Build Mode (most recent first):
-→ Claude 3.5 Sonnet: $3.00 in / $15.00 out • 200K ctx [tools, vision]
+→ MiniMax M2.1: $0.20 in / $0.20 out • 1000K ctx [tools]
 ```
 
 #### `fetch-llm-pricing`
@@ -119,9 +116,14 @@ History updates immediately in both the tool output and the sidebar.
 
 Data is cached in memory for the session. Use `fetch-llm-pricing` or restart OpenCode to refresh.
 
-### TUI plugin (`tui.tsx`)
+### TUI plugin (`tui.tsx` + `pricing-side.tsx`)
 
-Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin fetches OpenRouter data independently on mount — there is no shared memory between the server and TUI processes.
+Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
+
+1. Fetches OpenRouter data independently at startup (no shared memory with the server process).
+2. Seeds `planModel`/`buildModel` signals from `api.state.config` (the config default).
+3. Listens for `message.updated` events via `api.event.on` — each `AssistantMessage` carries `providerID`, `modelID`, and `mode`, so the signals update to reflect the model actually used each turn.
+4. `PricingSide` re-renders reactively whenever the signals change.
 
 ---
 
@@ -157,9 +159,8 @@ No build step — OpenCode runs `.ts`/`.tsx` source directly.
 | File | Purpose |
 |---|---|
 | `server.ts` | Server plugin: OpenRouter fetch, pricing map, three chat tools |
-| `tui.tsx` | TUI plugin: registers `sidebar_content` slot |
-| `context.tsx` | SolidJS context: fetches OpenRouter data, exposes plan/build history |
-| `pricing-side.tsx` | Sidebar component: renders top-3 models per mode |
+| `tui.tsx` | TUI plugin: factory closure, event listener, slot registration |
+| `pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with live pricing |
 
 ---
 
