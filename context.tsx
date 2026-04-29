@@ -118,16 +118,17 @@ export function PricingProvider(props: { api: Api; children: unknown }) {
   refresh();
 
   const getModelInfo = (model: string): ModelInfo => {
-    // Exact match first; fall back to model-name suffix match to handle
-    // provider-prefixed slugs (e.g. "openai/claude-sonnet-4-5" still matches
-    // "anthropic/claude-sonnet-4-5" in the pricing map).
+    // Exact match first; fall back to model-name suffix match, normalising
+    // dashes between digits to dots so "claude-sonnet-4-5" (OpenCode style)
+    // matches "claude-sonnet-4.5" (OpenRouter style).
+    const norm = (s: string) => s.replace(/(\d)-(\d)/g, "$1.$2");
     const exact = pricingMap.get(model);
     if (exact) return exact;
-    const name = model.includes("/")
-      ? (model.split("/").at(-1) ?? model)
-      : model;
+    const name = norm(
+      model.includes("/") ? (model.split("/").at(-1) ?? model) : model,
+    );
     for (const [key, info] of pricingMap) {
-      if (key.split("/").pop() === name) return info;
+      if (norm(key.split("/").pop() ?? key) === name) return info;
     }
     return {
       inputPerM: 0,

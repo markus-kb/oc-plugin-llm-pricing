@@ -21,15 +21,26 @@ function addToHistory(mode: "plan" | "build", model: string) {
   if (history.length > 3) history.length = 3;
 }
 
+// OpenCode uses dashes in version suffixes (e.g. "claude-sonnet-4-5") while
+// OpenRouter uses dots ("claude-sonnet-4.5"). Normalise both sides to dots
+// before comparing so the two naming conventions resolve to the same entry.
+function normaliseName(s: string): string {
+  // Replace runs of digits separated by dashes with dot-separated equivalents,
+  // e.g. "sonnet-4-5" → "sonnet-4.5", but leave non-numeric segments alone.
+  return s.replace(/(\d)-(\d)/g, "$1.$2");
+}
+
 export function getModelInfo(model: string): ModelInfo {
-  // Exact match first; fall back to matching on the model-name portion only
-  // (strip provider prefix) so e.g. "claude-sonnet-4-5" matches
-  // "anthropic/claude-sonnet-4-5" regardless of which provider is used.
+  // Exact match first; fall back to model-name suffix match so that a stored
+  // id like "anthropic/claude-sonnet-4-5" resolves even when OpenRouter lists
+  // the same model as "anthropic/claude-sonnet-4.5".
   const exact = pricingMap.get(model);
   if (exact) return exact;
-  const name = model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
+  const name = normaliseName(
+    model.includes("/") ? (model.split("/").at(-1) ?? model) : model,
+  );
   for (const [key, info] of pricingMap) {
-    if (key.split("/").pop() === name) return info;
+    if (normaliseName(key.split("/").pop() ?? key) === name) return info;
   }
   return {
     inputPerM: 0,
