@@ -1,7 +1,7 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin } from "@opencode-ai/plugin/tui";
-import { createContext, createSignal, useContext } from "solid-js";
+import { createContext, createMemo, createSignal, useContext } from "solid-js";
 
 type Api = Parameters<TuiPlugin>[0];
 
@@ -23,38 +23,29 @@ interface PricingContextType {
 
 export const PricingContext = createContext<PricingContextType>();
 
-function seedHistory(api: Api, mode: "plan" | "build"): string[] {
-  // Read the configured model for this mode from the resolved config.
-  // api.state.config holds the fully resolved opencode config (same shape as opencode.json).
-  try {
-    const cfg = api.state.config as Record<string, unknown>;
-    const agent = cfg?.agent as Record<string, unknown> | undefined;
-    const modeConfig = agent?.[mode] as Record<string, unknown> | undefined;
-    const model = modeConfig?.model;
-    if (typeof model === "string" && model.trim()) return [model.trim()];
-  } catch {
-    // Defensive: api.state may not be ready yet — fall back silently.
-  }
-  return [];
-}
-
 export function PricingProvider(props: { api: Api; children: unknown }) {
   // pricingMap is local to the TUI — fetched independently from OpenRouter.
   // The server plugin also fetches from OpenRouter but runs in a separate process;
   // there is no shared memory between the two, so TUI must own its own copy.
   const pricingMap = new Map<string, ModelInfo>();
 
-  const [planHistory, setPlanHistory] = createSignal<string[]>(
-    seedHistory(props.api, "plan"),
-  );
-  const [buildHistory, setBuildHistory] = createSignal<string[]>(
-    seedHistory(props.api, "build"),
-  );
-  const [, setVersion] = createSignal(0); // bumped after fetch to trigger re-renders
+  // version is bumped after each OpenRouter fetch so that getModelInfo memos
+  // re-evaluate even though pricingMap is mutated in place (not a signal).
+  const [version, setVersion] = createSignal(0);
 
-  // Listen for model-switch events on the bus and update history.
-  // Event shape: { type: "config.set", ... } or similar — use the event bus if available.
-  // For now, we also poll config on each render via seedHistory (signals are reactive).
+  // planHistory and buildHistory are derived reactively from api.state.config
+  // so the sidebar updates automatically when the user switches models in OpenCode.
+  // api.state.config is a SolidJS reactive store — reading it inside createMemo
+  // registers a dependency and re-runs the memo whenever config changes.
+  const planHistory = createMemo(() => {
+    const model = props.api.state.config?.agent?.plan?.model;
+    return typeof model === "string" && model.trim() ? [model.trim()] : [];
+  });
+
+  const buildHistory = createMemo(() => {
+    const model = props.api.state.config?.agent?.build?.model;
+    return typeof model === "string" && model.trim() ? [model.trim()] : [];
+  });
 
   function parseModels(data: unknown): void {
     const raw = data as { data?: unknown[] } | unknown[];
@@ -102,26 +93,23 @@ export function PricingProvider(props: { api: Api; children: unknown }) {
       if (!res.ok) return;
       const data = await res.json();
       parseModels(data);
-      // Re-seed history from config in case models changed while fetching.
-      const plan = seedHistory(props.api, "plan");
-      if (plan.length) setPlanHistory(plan);
-      const build = seedHistory(props.api, "build");
-      if (build.length) setBuildHistory(build);
-      // Bump version signal so consumers re-derive from getModelInfo.
+      // Bump version so getModelInfo memos re-evaluate with fresh pricing data.
       setVersion((v) => v + 1);
     } catch {
       // Fetch failures are silent — the sidebar will show fallback "$0.00" values.
     }
   };
 
-  // Fetch on mount; runs once when the PricingProvider is first rendered.
+  // Fetch on mount; runs once when PricingProvider is first rendered.
   refresh();
 
+  // Normalise digit-dash-digit to dot so "claude-sonnet-4-5" (OpenCode style)
+  // matches "claude-sonnet-4.5" (OpenRouter style).
+  const norm = (s: string) => s.replace(/(\d)-(\d)/g, (_, a, b) => `${a}.${b}`);
+
   const getModelInfo = (model: string): ModelInfo => {
-    // Exact match first; fall back to model-name suffix match, normalising
-    // dashes between digits to dots so "claude-sonnet-4-5" (OpenCode style)
-    // matches "claude-sonnet-4.5" (OpenRouter style).
-    const norm = (s: string) => s.replace(/(\d)-(\d)/g, "$1.$2");
+    // Track version so this re-evaluates inside a createMemo after each fetch.
+    version();
     const exact = pricingMap.get(model);
     if (exact) return exact;
     const name = norm(
