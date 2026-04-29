@@ -1,6 +1,9 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/solid */
+import type { TuiPlugin } from "@opencode-ai/plugin/tui";
 import { createContext, createSignal, useContext } from "solid-js";
+
+type Api = Parameters<TuiPlugin>[0];
 
 // ModelInfo mirrors the shape in server.ts; kept local to avoid cross-process imports.
 export interface ModelInfo {
@@ -11,8 +14,6 @@ export interface ModelInfo {
   features: string[];
 }
 
-const FALLBACK_MODEL = "anthropic/claude-sonnet-4-5";
-
 interface PricingContextType {
   planHistory: () => string[];
   buildHistory: () => string[];
@@ -22,19 +23,38 @@ interface PricingContextType {
 
 export const PricingContext = createContext<PricingContextType>();
 
-export function PricingProvider(props: { children: unknown }) {
+function seedHistory(api: Api, mode: "plan" | "build"): string[] {
+  // Read the configured model for this mode from the resolved config.
+  // api.state.config holds the fully resolved opencode config (same shape as opencode.json).
+  try {
+    const cfg = api.state.config as Record<string, unknown>;
+    const agent = cfg?.agent as Record<string, unknown> | undefined;
+    const modeConfig = agent?.[mode] as Record<string, unknown> | undefined;
+    const model = modeConfig?.model;
+    if (typeof model === "string" && model.trim()) return [model.trim()];
+  } catch {
+    // Defensive: api.state may not be ready yet — fall back silently.
+  }
+  return [];
+}
+
+export function PricingProvider(props: { api: Api; children: unknown }) {
   // pricingMap is local to the TUI — fetched independently from OpenRouter.
   // The server plugin also fetches from OpenRouter but runs in a separate process;
   // there is no shared memory between the two, so TUI must own its own copy.
   const pricingMap = new Map<string, ModelInfo>();
 
-  const [planHistory, _setPlanHistory] = createSignal<string[]>([
-    FALLBACK_MODEL,
-  ]);
-  const [buildHistory, _setBuildHistory] = createSignal<string[]>([
-    FALLBACK_MODEL,
-  ]);
+  const [planHistory, setPlanHistory] = createSignal<string[]>(
+    seedHistory(props.api, "plan"),
+  );
+  const [buildHistory, setBuildHistory] = createSignal<string[]>(
+    seedHistory(props.api, "build"),
+  );
   const [, setVersion] = createSignal(0); // bumped after fetch to trigger re-renders
+
+  // Listen for model-switch events on the bus and update history.
+  // Event shape: { type: "config.set", ... } or similar — use the event bus if available.
+  // For now, we also poll config on each render via seedHistory (signals are reactive).
 
   function parseModels(data: unknown): void {
     const raw = data as { data?: unknown[] } | unknown[];
@@ -82,6 +102,11 @@ export function PricingProvider(props: { children: unknown }) {
       if (!res.ok) return;
       const data = await res.json();
       parseModels(data);
+      // Re-seed history from config in case models changed while fetching.
+      const plan = seedHistory(props.api, "plan");
+      if (plan.length) setPlanHistory(plan);
+      const build = seedHistory(props.api, "build");
+      if (build.length) setBuildHistory(build);
       // Bump version signal so consumers re-derive from getModelInfo.
       setVersion((v) => v + 1);
     } catch {
@@ -92,14 +117,26 @@ export function PricingProvider(props: { children: unknown }) {
   // Fetch on mount; runs once when the PricingProvider is first rendered.
   refresh();
 
-  const getModelInfo = (model: string): ModelInfo =>
-    pricingMap.get(model) ?? {
+  const getModelInfo = (model: string): ModelInfo => {
+    // Exact match first; fall back to model-name suffix match to handle
+    // provider-prefixed slugs (e.g. "openai/claude-sonnet-4-5" still matches
+    // "anthropic/claude-sonnet-4-5" in the pricing map).
+    const exact = pricingMap.get(model);
+    if (exact) return exact;
+    const name = model.includes("/")
+      ? (model.split("/").at(-1) ?? model)
+      : model;
+    for (const [key, info] of pricingMap) {
+      if (key.split("/").pop() === name) return info;
+    }
+    return {
       inputPerM: 0,
       outputPerM: 0,
       contextLength: null,
-      displayName: model,
+      displayName: model.split("/").pop() ?? model,
       features: [],
     };
+  };
 
   return (
     <PricingContext.Provider

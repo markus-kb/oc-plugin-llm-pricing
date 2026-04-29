@@ -22,15 +22,22 @@ function addToHistory(mode: "plan" | "build", model: string) {
 }
 
 export function getModelInfo(model: string): ModelInfo {
-  return (
-    pricingMap.get(model) ?? {
-      inputPerM: 0,
-      outputPerM: 0,
-      contextLength: null,
-      displayName: model,
-      features: [],
-    }
-  );
+  // Exact match first; fall back to matching on the model-name portion only
+  // (strip provider prefix) so e.g. "claude-sonnet-4-5" matches
+  // "anthropic/claude-sonnet-4-5" regardless of which provider is used.
+  const exact = pricingMap.get(model);
+  if (exact) return exact;
+  const name = model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
+  for (const [key, info] of pricingMap) {
+    if (key.split("/").pop() === name) return info;
+  }
+  return {
+    inputPerM: 0,
+    outputPerM: 0,
+    contextLength: null,
+    displayName: model,
+    features: [],
+  };
 }
 
 async function fetchOpenRouterData(
