@@ -1,6 +1,5 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput, PluginModule } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import type { createOpencodeClient } from "@opencode-ai/sdk";
 
 interface ModelInfo {
   inputPerM: number;
@@ -37,7 +36,7 @@ function getModelInfo(model: string): ModelInfo {
 }
 
 async function fetchOpenRouterData(
-  client: ReturnType<typeof createOpencodeClient>,
+  client: PluginInput["client"],
 ): Promise<void> {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models");
@@ -87,7 +86,7 @@ async function fetchOpenRouterData(
   }
 }
 
-export const LLMPricingPlugin: Plugin = async ({ client, $, directory }) => {
+const server: Plugin = async ({ client, $, directory }) => {
   // Fetch OpenRouter data once at startup
   await fetchOpenRouterData(client);
 
@@ -214,3 +213,10 @@ export const LLMPricingPlugin: Plugin = async ({ client, $, directory }) => {
     },
   };
 };
+
+const plugin: PluginModule & { id: string } = {
+  id: "llm-pricing",
+  server,
+};
+
+export default plugin;
