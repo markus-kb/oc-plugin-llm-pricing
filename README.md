@@ -168,7 +168,7 @@ No build step — OpenCode runs `.ts`/`.tsx` source directly.
 
 ## Acknowledgements
 
-The TUI sidebar architecture — slot registration pattern, factory closure for shared state, and `onMouseDown` usage — was informed by studying [oc-plugin-vault-tec](https://github.com/kommander/oc-plugin-vault-tec) by [@kommander](https://github.com/kommander). It was the clearest available reference for building a real OpenCode TUI plugin.
+The TUI sidebar architecture (slot registration pattern, factory closure for shared state, and `onMouseDown` usage etc) was informed by studying [oc-plugin-vault-tec](https://github.com/kommander/oc-plugin-vault-tec) by [@kommander](https://github.com/kommander). Thank you for the great pllugin!
 
 ---
 
