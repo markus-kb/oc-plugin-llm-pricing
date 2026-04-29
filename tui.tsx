@@ -79,22 +79,35 @@ const tui: TuiPlugin = async (api) => {
   // Fetch once at startup.
   await refresh();
 
-  // Seed from config; updated reactively via message.updated events below.
-  const [planModel, setPlanModel] = createSignal(
-    api.state.config?.agent?.plan?.model ?? "",
+  // Seed history from config defaults; grows to max 3 via message.updated events.
+  const seedPlan = api.state.config?.agent?.plan?.model ?? "";
+  const seedBuild = api.state.config?.agent?.build?.model ?? "";
+  const [planHistory, setPlanHistory] = createSignal<string[]>(
+    seedPlan ? [seedPlan] : [],
   );
-  const [buildModel, setBuildModel] = createSignal(
-    api.state.config?.agent?.build?.model ?? "",
+  const [buildHistory, setBuildHistory] = createSignal<string[]>(
+    seedBuild ? [seedBuild] : [],
   );
 
+  // Push model to front of history, deduplicate, cap at 3.
+  function pushHistory(
+    set: (fn: (prev: string[]) => string[]) => void,
+    model: string,
+  ) {
+    set((prev) => {
+      const deduped = prev.filter((m) => m !== model);
+      return [model, ...deduped].slice(0, 3);
+    });
+  }
+
   // Each AssistantMessage carries the model actually used for that turn.
-  // Update the sidebar signal so it always reflects the live active model.
+  // Update history so the sidebar always reflects the last 3 active models.
   api.event.on("message.updated", (event) => {
     const msg = event.properties.info;
     if (msg.role !== "assistant") return;
     const model = `${msg.providerID}/${msg.modelID}`;
-    if (msg.mode === "build") setBuildModel(model);
-    else setPlanModel(model);
+    if (msg.mode === "build") pushHistory(setBuildHistory, model);
+    else pushHistory(setPlanHistory, model);
   });
 
   const getModelInfo = (model: string): ModelInfo => {
@@ -134,8 +147,8 @@ const tui: TuiPlugin = async (api) => {
         return (
           <PricingSide
             theme={ctx.theme.current}
-            planModel={planModel()}
-            buildModel={buildModel()}
+            planHistory={planHistory()}
+            buildHistory={buildHistory()}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
           />

@@ -2,13 +2,13 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui";
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { ModelInfo } from "./tui";
 
 interface PricingSideProps {
   theme: TuiThemeCurrent;
-  planModel: string;
-  buildModel: string;
+  planHistory: string[];
+  buildHistory: string[];
   getModelInfo: (model: string) => ModelInfo;
   onRefresh: () => Promise<void>;
 }
@@ -24,6 +24,7 @@ function fmtPrice(perM: number): string {
 
 interface ModelRowProps {
   model: string;
+  active: boolean;
   theme: TuiThemeCurrent;
   getModelInfo: (model: string) => ModelInfo;
 }
@@ -33,20 +34,22 @@ function ModelRow(props: ModelRowProps) {
   const info = createMemo(() => props.getModelInfo(props.model));
   const ctx = () => fmtCtx(info().contextLength);
   const unknown = () => info().inputPerM === 0 && info().contextLength === null;
+  // Active model gets an arrow marker; history entries are indented flush.
+  const marker = () => (props.active ? "→" : " ");
 
   return (
     <box flexDirection="column" paddingLeft={2}>
-      <text fg={props.theme.text} bold>
-        {info().displayName}
+      <text fg={props.active ? props.theme.primary : props.theme.text}>
+        {marker()} {info().displayName}
       </text>
       <Show
         when={!unknown()}
         fallback={
-          <text fg={props.theme.textMuted}>{"  "}pricing unavailable</text>
+          <text fg={props.theme.textMuted}>{"   "}pricing unavailable</text>
         }
       >
         <text fg={props.theme.textMuted}>
-          {"  "}
+          {"   "}
           {fmtPrice(info().inputPerM)} in / {fmtPrice(info().outputPerM)} out •{" "}
           {ctx()} ctx
         </text>
@@ -57,7 +60,8 @@ function ModelRow(props: ModelRowProps) {
 
 interface ModeSectionProps {
   label: string;
-  model: string;
+  // Most-recent first; index 0 is the active model.
+  history: string[];
   theme: TuiThemeCurrent;
   getModelInfo: (model: string) => ModelInfo;
 }
@@ -79,17 +83,26 @@ function ModeSection(props: ModeSectionProps) {
           {triangle()} {props.label}
         </text>
       </box>
-      <Show when={open() && !!props.model}>
-        <ModelRow
-          model={props.model}
-          theme={props.theme}
-          getModelInfo={props.getModelInfo}
-        />
-      </Show>
-      <Show when={open() && !props.model}>
-        <text fg={props.theme.textMuted} paddingLeft={2}>
-          (not configured)
-        </text>
+      <Show when={open()}>
+        <Show
+          when={props.history.length > 0}
+          fallback={
+            <text fg={props.theme.textMuted} paddingLeft={2}>
+              (not configured)
+            </text>
+          }
+        >
+          <For each={props.history}>
+            {(model, i) => (
+              <ModelRow
+                model={model}
+                active={i() === 0}
+                theme={props.theme}
+                getModelInfo={props.getModelInfo}
+              />
+            )}
+          </For>
+        </Show>
       </Show>
     </box>
   );
@@ -103,13 +116,13 @@ export function PricingSide(props: PricingSideProps) {
       </text>
       <ModeSection
         label="Plan"
-        model={props.planModel}
+        history={props.planHistory}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
       <ModeSection
         label="Build"
-        model={props.buildModel}
+        history={props.buildHistory}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
