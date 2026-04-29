@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "oc-plugin-llm-pricing",
+  "version": "1.0.0",
+  "description": "OpenCode plugin — sidebar pricing, context windows, and features for your last 3 LLMs per agent mode",
+  "type": "module",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "llm",
+    "pricing"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@opencode-ai/plugin": "^1.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "check": "biome check .",
+    "check:write": "biome check --write ."
+  }
+}
