@@ -15,30 +15,36 @@ A lightweight, no-config plugin that fetches fresh data from OpenRouter on start
 
 ## Installation
 
-Install from the CLI:
+This plugin is not published to npm. Install it by cloning the repo and referencing it via a local path in your project's OpenCode config.
+
+**1. Clone the repo:**
 
 ```bash
-opencode plugin oc-plugin-llm-pricing
+git clone https://github.com/backwithambition/oc-plugin-llm-pricing /path/to/oc-plugin-llm-pricing
 ```
 
-Or from the OpenCode command palette:
+**2. Add it to your project's `.opencode/opencode.json`** (create the file if it doesn't exist):
 
-1. Press `Ctrl+P`
-2. Select `Install Plugin`
-3. Enter `oc-plugin-llm-pricing`
+```jsonc
+// your-project/.opencode/opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ["/path/to/oc-plugin-llm-pricing", { "enabled": true }]
+  ]
+}
+```
 
-The plugin loads automatically and fetches ~300 models from OpenRouter (public endpoint, no API key needed).
+You can use a relative path (e.g. `"../../oc-plugin-llm-pricing"`) or an absolute path. OpenCode resolves it at startup — no build step, no file copying, no npm install.
 
-### Local development
+### Developing the plugin itself
 
-Run OpenCode from inside this repo — it picks up `.opencode/opencode.json` automatically:
+Run OpenCode from inside this repo to use the bundled `.opencode/opencode.json`, which loads the plugin from the repo root via `"../"`:
 
 ```bash
 cd /path/to/oc-plugin-llm-pricing
 opencode
 ```
-
-No file copying required. The `.opencode/` directory contains the runtime config that loads the plugin from the repo root via a relative path.
 
 ---
 
