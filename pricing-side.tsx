@@ -2,12 +2,15 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui";
-import { For } from "solid-js";
-import { usePricing } from "./context";
+import { createMemo, createSignal, Show } from "solid-js";
+import type { ModelInfo } from "./tui";
 
 interface PricingSideProps {
   theme: TuiThemeCurrent;
-  sessionId: string;
+  planModel: string;
+  buildModel: string;
+  getModelInfo: (model: string) => ModelInfo;
+  onRefresh: () => Promise<void>;
 }
 
 function fmtCtx(contextLength: number | null): string {
@@ -21,63 +24,95 @@ function fmtPrice(perM: number): string {
 
 interface ModelRowProps {
   model: string;
-  isActive: boolean;
   theme: TuiThemeCurrent;
+  getModelInfo: (model: string) => ModelInfo;
 }
 
 function ModelRow(props: ModelRowProps) {
-  const { getModelInfo } = usePricing();
-  const info = getModelInfo(props.model);
-  const prefix = props.isActive ? "→ " : "  ";
-  const ctx = fmtCtx(info.contextLength);
-  const color = props.isActive ? props.theme.text : props.theme.textMuted;
+  // createMemo re-evaluates when getModelInfo's internal version signal bumps.
+  const info = createMemo(() => props.getModelInfo(props.model));
+  const ctx = () => fmtCtx(info().contextLength);
+  const unknown = () => info().inputPerM === 0 && info().contextLength === null;
 
   return (
-    <box flexDirection="column" paddingLeft={1}>
-      <text fg={color} bold={props.isActive}>
-        {prefix}
-        {info.displayName}
+    <box flexDirection="column" paddingLeft={2}>
+      <text fg={props.theme.text} bold>
+        {info().displayName}
       </text>
-      <text fg={props.theme.textMuted}>
-        {"   "}
-        {fmtPrice(info.inputPerM)} in / {fmtPrice(info.outputPerM)} out • {ctx}{" "}
-        ctx
-      </text>
+      <Show
+        when={!unknown()}
+        fallback={
+          <text fg={props.theme.textMuted}>{"  "}pricing unavailable</text>
+        }
+      >
+        <text fg={props.theme.textMuted}>
+          {"  "}
+          {fmtPrice(info().inputPerM)} in / {fmtPrice(info().outputPerM)} out •{" "}
+          {ctx()} ctx
+        </text>
+      </Show>
     </box>
   );
 }
 
 interface ModeSectionProps {
   label: string;
-  history: string[];
+  model: string;
   theme: TuiThemeCurrent;
+  getModelInfo: (model: string) => ModelInfo;
 }
 
 function ModeSection(props: ModeSectionProps) {
+  const [open, setOpen] = createSignal(true);
+  const triangle = () => (open() ? "▼" : "▶");
+
   return (
     <box flexDirection="column" marginBottom={1}>
-      <text fg={props.theme.primary} bold paddingLeft={1}>
-        {props.label}
-      </text>
-      <For each={props.history}>
-        {(model, i) => (
-          <ModelRow model={model} isActive={i() === 0} theme={props.theme} />
-        )}
-      </For>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: TUI element, not a web DOM node */}
+      <box
+        flexDirection="row"
+        paddingLeft={1}
+        // Clicking the header toggles the section open/closed.
+        onClick={() => setOpen((v) => !v)}
+      >
+        <text fg={props.theme.primary} bold>
+          {triangle()} {props.label}
+        </text>
+      </box>
+      <Show when={open() && !!props.model}>
+        <ModelRow
+          model={props.model}
+          theme={props.theme}
+          getModelInfo={props.getModelInfo}
+        />
+      </Show>
+      <Show when={open() && !props.model}>
+        <text fg={props.theme.textMuted} paddingLeft={2}>
+          (not configured)
+        </text>
+      </Show>
     </box>
   );
 }
 
 export function PricingSide(props: PricingSideProps) {
-  const { planHistory, buildHistory } = usePricing();
-
   return (
     <box flexDirection="column" paddingTop={1}>
       <text fg={props.theme.text} bold paddingLeft={1} marginBottom={1}>
         LLM Pricing
       </text>
-      <ModeSection label="Plan" history={planHistory()} theme={props.theme} />
-      <ModeSection label="Build" history={buildHistory()} theme={props.theme} />
+      <ModeSection
+        label="Plan"
+        model={props.planModel}
+        theme={props.theme}
+        getModelInfo={props.getModelInfo}
+      />
+      <ModeSection
+        label="Build"
+        model={props.buildModel}
+        theme={props.theme}
+        getModelInfo={props.getModelInfo}
+      />
     </box>
   );
 }

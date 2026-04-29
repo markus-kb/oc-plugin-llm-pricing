@@ -1,13 +1,23 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid",
+    "paths": {
+      "@opencode-ai/plugin": [
+        "./.opencode/node_modules/@opencode-ai/plugin/dist/index.d.ts"
+      ],
+      "@opencode-ai/plugin/*": [
+        "./.opencode/node_modules/@opencode-ai/plugin/dist/*"
+      ]
+    }
   },
-  "include": ["server.ts"],
+  "include": ["server.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }

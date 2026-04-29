@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Git
+.gitignore
+
+# OpenCode local dev config (not needed in published package)
+.opencode/
+
+# Dev tooling
+biome.json
+tsconfig.json
+AGENTS.md
