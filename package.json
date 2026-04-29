@@ -12,18 +12,34 @@
   ],
   "license": "MIT",
   "files": [
-    "server.ts"
+    "server.ts",
+    "tui.tsx",
+    "context.tsx",
+    "pricing-side.tsx"
   ],
   "exports": {
     "./server": {
-      "import": "./server.ts"
+      "import": "./server.ts",
+      "config": {
+        "enabled": true
+      }
+    },
+    "./tui": {
+      "import": "./tui.tsx",
+      "config": {
+        "enabled": true
+      }
     }
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.4.0"
+    "@opencode-ai/plugin": ">=1.4.0",
+    "@opentui/core": "*",
+    "@opentui/solid": "*",
+    "solid-js": "*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
+    "@types/bun": "^1.3.13",
     "@types/node": "^22.0.0",
     "typescript": "^5.0.0"
   },
