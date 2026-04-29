@@ -12,15 +12,15 @@
   ],
   "license": "MIT",
   "files": [
-    "src/"
+    "server.ts"
   ],
   "exports": {
     "./server": {
-      "import": "./src/llm-pricing-plugin.ts"
+      "import": "./server.ts"
     }
   },
-  "dependencies": {
-    "@opencode-ai/plugin": "^1.4.0"
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.4.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

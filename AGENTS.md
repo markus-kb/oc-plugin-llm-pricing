@@ -2,19 +2,57 @@
 
 ## Repo structure
 Single-file OpenCode plugin. No build step, no test suite, no CI.
-Key files: `src/llm-pricing-plugin.ts`, `package.json`, `tsconfig.json`, `biome.json`.
+Key files: `server.ts`, `package.json`, `tsconfig.json`, `biome.json`.
 
-## Deliverable
-The built artifact is the `.ts` file itself. Installation is a manual copy:
+The plugin entry point is `server.ts` at the repo root (not inside `src/`).
+
+## Installation (local development)
+OpenCode loads the plugin via the `plugin` array in `.opencode/opencode.json`.
+The `.opencode/` directory at repo root contains:
+- `opencode.json` — references this repo as a plugin via relative path `"../"`
+- `package.json` — pins `@opencode-ai/plugin` so OpenCode can resolve it at load time
+
+Run OpenCode from **inside this repo directory** to pick up `.opencode/opencode.json`.
+No file copying required.
+
 ```
-cp src/llm-pricing-plugin.ts ~/.config/opencode/plugins/
+cd /path/to/oc-plugin-llm-pricing
+opencode
 ```
-OpenCode loads `.ts` files directly from that folder — no compilation step.
 
 ## `@opencode-ai/plugin` dependency
-This package is a `devDependency` for local type-checking only. At runtime it is injected by OpenCode. Do not expect it in `node_modules` inside the plugin environment.
+- Root `package.json`: listed under `peerDependencies` (for type-checking awareness only)
+- `.opencode/package.json`: listed under `dependencies` with a pinned version — **this is the copy OpenCode actually resolves at runtime**
+- Root `devDependencies`: not listed (peer resolution handles it)
 
-## Plugin API (return object shape)
+Do not add it to root `dependencies` — that causes a duplicate-module type conflict with the copy bundled inside `@opencode-ai/plugin` itself.
+
+## Plugin module shape
+`server.ts` must export a default object matching `PluginModule & { id: string }`:
+
+```ts
+import type { Plugin, PluginInput, PluginModule } from "@opencode-ai/plugin";
+
+const server: Plugin = async ({ client, $, directory }) => {
+  return { /* hooks */ };
+};
+
+const plugin: PluginModule & { id: string } = {
+  id: "llm-pricing",
+  server,
+};
+
+export default plugin;
+```
+
+The `./server` exports map entry in `package.json` points OpenCode to this file:
+```json
+"exports": {
+  "./server": { "import": "./server.ts" }
+}
+```
+
+## Plugin API (hooks return object)
 ```ts
 return {
   config: async (cfg: any) => void,               // fires once at startup with resolved config
@@ -38,6 +76,11 @@ Valid hook keys (from `@opencode-ai/plugin` Hooks interface):
 
 There is NO `sidebar` key, NO `session.created` key, NO `session.updated` key.
 Session events are received via the `event` hook: `if (event.type === "session.created") { ... }`
+
+## Typing the `client` parameter
+Type `client` as `PluginInput["client"]` — do **not** import `createOpencodeClient` from
+`@opencode-ai/sdk`. Adding `@opencode-ai/sdk` as a devDep causes a duplicate-type conflict
+because `@opencode-ai/plugin` bundles its own copy in its `node_modules/`.
 
 ## Shell executor `$`
 The `$` parameter is the OpenCode runtime shell helper (tagged-template, same syntax as Bun's `$`). It is not `execa` or any npm package.
@@ -78,11 +121,6 @@ npm run check:write  # auto-fix lint + format issues
 No build step — OpenCode runs the `.ts` source directly.
 
 ## Manual testing
-1. Copy plugin to `~/.config/opencode/plugins/`
-2. Restart OpenCode
-3. Verify plugin appears in ctrl+p → Plugins
-4. Call `show-llm-pricing` in chat to verify pricing data
-5. Call `fetch-llm-pricing` to verify on-demand refresh works
-
-## Export name
-The exported plugin constant is `LLMPricingPlugin` (camelCase, no spaces). The OpenCode runtime discovers it by iterating all named exports and calling any that are functions — the name is not significant.
+1. `cd` into this repo directory
+2. Run `opencode` — it picks up `.opencode/opencode.json` automatically
+3. Verify the three tools appear in chat: `show-llm-pricing`, `fetch-llm-pricing`, `update-llm-selection`

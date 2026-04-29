@@ -8,6 +8,6 @@
     "esModuleInterop": true,
     "noEmit": true
   },
-  "include": ["src/**/*"],
+  "include": ["server.ts"],
   "exclude": ["node_modules"]
 }
