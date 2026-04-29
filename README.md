@@ -4,8 +4,8 @@
 
 A lightweight, no-config plugin that fetches fresh data from OpenRouter on startup. It gives you input/output costs (USD per million tokens), context length, and key capabilities while you work — both as chat tools and as a live sidebar panel.
 
-- ✅ Sidebar updates automatically as you switch models mid-session
-- ✅ Live sidebar panel showing Plan + Build pricing at a glance
+- ✅ Last 3 models per mode in the sidebar (most-recent first, active marked with `→`)
+- ✅ Sidebar updates after each completed message (requires a response to detect model in use)
 - ✅ Clean display names (no provider prefixes)
 - ✅ OpenCode Zen fallback when a model isn't in OpenRouter data
 - ✅ Three tools: `show-llm-pricing`, `fetch-llm-pricing`, `update-llm-selection`
@@ -52,17 +52,19 @@ opencode
 
 ### Sidebar panel
 
-The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the currently active model for each agent mode, updating automatically whenever a message completes (via `message.updated` events — the `AssistantMessage` carries the model actually used for that turn).
+The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the last 3 models used per agent mode (most-recent first), updating automatically whenever a message completes (via `message.updated` events — the `AssistantMessage` carries the model actually used for that turn). The active model is marked with `→`.
 
 ```
 LLM Pricing
 
 ▼ Plan
-   Claude Sonnet 4.5
+→ Claude Sonnet 4.5
    $3.00 in / $15.00 out • 1000K ctx
+   GPT-4o
+   $2.50 in / $10.00 out • 128K ctx
 
 ▼ Build
-   MiniMax M2.1
+→ MiniMax M2.1
    $0.20 in / $0.20 out • 1000K ctx
 ```
 
@@ -121,9 +123,9 @@ Data is cached in memory for the session. Use `fetch-llm-pricing` or restart Ope
 Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
 
 1. Fetches OpenRouter data independently at startup (no shared memory with the server process).
-2. Seeds `planModel`/`buildModel` signals from `api.state.config` (the config default).
-3. Listens for `message.updated` events via `api.event.on` — each `AssistantMessage` carries `providerID`, `modelID`, and `mode`, so the signals update to reflect the model actually used each turn.
-4. `PricingSide` re-renders reactively whenever the signals change.
+2. Seeds `planHistory`/`buildHistory` signals from `api.state.config` (the config default).
+3. Listens for `message.updated` events via `api.event.on` — each `AssistantMessage` carries `providerID`, `modelID`, and `mode`, so the history signals grow to track the last 3 models per mode.
+4. `PricingSide` re-renders reactively whenever the history signals change.
 
 ---
 
