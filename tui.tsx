@@ -79,10 +79,23 @@ const tui: TuiPlugin = async (api) => {
   // Fetch once at startup.
   await refresh();
 
-  // Read the configured models from api.state.config once at startup.
-  // config is a static snapshot — not reactive — so plain consts suffice.
-  const planModel = api.state.config?.agent?.plan?.model ?? "";
-  const buildModel = api.state.config?.agent?.build?.model ?? "";
+  // Seed from config; updated reactively via message.updated events below.
+  const [planModel, setPlanModel] = createSignal(
+    api.state.config?.agent?.plan?.model ?? "",
+  );
+  const [buildModel, setBuildModel] = createSignal(
+    api.state.config?.agent?.build?.model ?? "",
+  );
+
+  // Each AssistantMessage carries the model actually used for that turn.
+  // Update the sidebar signal so it always reflects the live active model.
+  api.event.on("message.updated", (event) => {
+    const msg = event.properties.info;
+    if (msg.role !== "assistant") return;
+    const model = `${msg.providerID}/${msg.modelID}`;
+    if (msg.mode === "build") setBuildModel(model);
+    else setPlanModel(model);
+  });
 
   const getModelInfo = (model: string): ModelInfo => {
     // Reading version() registers a reactive dependency so callers inside
@@ -121,8 +134,8 @@ const tui: TuiPlugin = async (api) => {
         return (
           <PricingSide
             theme={ctx.theme.current}
-            planModel={planModel}
-            buildModel={buildModel}
+            planModel={planModel()}
+            buildModel={buildModel()}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
           />
