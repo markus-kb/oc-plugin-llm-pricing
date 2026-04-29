@@ -72,8 +72,8 @@ function ModeSection(props: ModeSectionProps) {
       <box
         flexDirection="row"
         paddingLeft={1}
-        // Clicking the header toggles the section open/closed.
-        onClick={() => setOpen((v) => !v)}
+        // onMouseDown is the correct TUI event — onClick does not fire in @opentui/solid.
+        onMouseDown={() => setOpen((v) => !v)}
       >
         <text fg={props.theme.primary} bold>
           {triangle()} {props.label}
