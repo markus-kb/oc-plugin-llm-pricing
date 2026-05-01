@@ -68,12 +68,22 @@ OC_PLUGIN_LLP = C:/path/to/oc-plugin-llm-pricing
 export OC_PLUGIN_LLP="/home/youruser/plugins/oc-plugin-llm-pricing"
 ```
 
-Then reference it in your global config:
+Then reference it in **both** global config files — OpenCode splits server and TUI loading across two separate files, and a missing entry in either one silently loads only that half of the plugin:
 
 ```jsonc
-// ~/.config/opencode/opencode.json
+// ~/.config/opencode/opencode.json  — loads the server plugin (chat tools)
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ["{env:OC_PLUGIN_LLP}", { "enabled": true }]
+  ]
+}
+```
+
+```jsonc
+// ~/.config/opencode/tui.json  — loads the TUI plugin (sidebar)
+{
+  "$schema": "https://opencode.ai/tui.json",
   "plugin": [
     ["{env:OC_PLUGIN_LLP}", { "enabled": true }]
   ]
