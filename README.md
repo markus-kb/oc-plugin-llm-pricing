@@ -17,34 +17,36 @@ A lightweight, no-config plugin that fetches fresh data from OpenRouter on start
 
 This plugin is not published to npm. Install it by cloning the repo and referencing it via a local path in your project's OpenCode config.
 
-**1. Clone the repo:**
+**1. Clone the repo** to wherever you keep local tools — e.g. `~/plugins/oc-plugin-llm-pricing`:
 
 ```bash
-git clone https://github.com/backwithambition/oc-plugin-llm-pricing /path/to/oc-plugin-llm-pricing
+git clone https://github.com/markus-kb/oc-plugin-llm-pricing ~/plugins/oc-plugin-llm-pricing
 ```
 
-**2. Add it to your project's `.opencode/opencode.json`** (create the file if it doesn't exist):
+The cloned directory contains the plugin source OpenCode loads directly — no build step required:
+
+```
+oc-plugin-llm-pricing/
+├── server.ts          # server plugin (chat tools, OpenRouter fetch)
+├── tui.tsx            # TUI plugin (sidebar slot registration)
+├── pricing-side.tsx   # sidebar UI component
+├── package.json
+└── tsconfig.json
+```
+
+**2. Add it to your project's `.opencode/opencode.json`** (create the file if it doesn't exist), pointing at the directory you cloned into:
 
 ```jsonc
 // your-project/.opencode/opencode.json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    ["/path/to/oc-plugin-llm-pricing", { "enabled": true }]
+    ["/absolute/path/to/oc-plugin-llm-pricing", { "enabled": true }]
   ]
 }
 ```
 
-You can use a relative path (e.g. `"../../oc-plugin-llm-pricing"`) or an absolute path. OpenCode resolves it at startup — no build step, no file copying, no npm install.
-
-### Developing the plugin itself
-
-Run OpenCode from inside this repo to use the bundled `.opencode/opencode.json`, which loads the plugin from the repo root via `"../"`:
-
-```bash
-cd /path/to/oc-plugin-llm-pricing
-opencode
-```
+You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`) or an absolute path. OpenCode resolves it at startup — no build step, no file copying, no npm install.
 
 ---
 
