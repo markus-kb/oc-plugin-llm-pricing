@@ -48,6 +48,40 @@ oc-plugin-llm-pricing/
 
 You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`) or an absolute path. OpenCode resolves it at startup — no build step, no file copying, no npm install.
 
+### Global install (shared across all projects, across machines)
+
+If you use a shared `opencode.json` / `opencode.jsonc` (e.g. `~/.config/opencode/opencode.json`) across multiple machines where the plugin is cloned to different paths, use an environment variable instead of a hard-coded path.
+
+OpenCode supports `{env:VAR}` substitution in config files. Set a variable on each machine pointing to wherever the repo is cloned:
+
+**Windows** — set as a System Environment Variable (Control Panel → System → Advanced → Environment Variables):
+
+```
+OC_PLUGIN_LLP = C:\path\to\oc-plugin-llm-pricing
+```
+
+**Linux / macOS** — add to `~/.bashrc`, `~/.zshrc`, or `~/.profile`:
+
+```bash
+export OC_PLUGIN_LLP="/home/youruser/plugins/oc-plugin-llm-pricing"
+```
+
+Then reference it in your global config:
+
+```jsonc
+// ~/.config/opencode/opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ["{env:OC_PLUGIN_LLP}", { "enabled": true }]
+  ]
+}
+```
+
+OpenCode substitutes `{env:OC_PLUGIN_LLP}` before resolving the plugin path. Each machine uses its own local path; the config file stays identical across all of them.
+
+> **Note:** On Windows, newly set System Environment Variables are only picked up by processes started after the variable was set. Restart your terminal (and OpenCode) after adding it.
+
 ---
 
 ## What You Get
