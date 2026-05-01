@@ -54,10 +54,12 @@ If you use a shared `opencode.json` / `opencode.jsonc` (e.g. `~/.config/opencode
 
 OpenCode supports `{env:VAR}` substitution in config files. Set a variable on each machine pointing to wherever the repo is cloned:
 
-**Windows** — set as a System Environment Variable (Control Panel → System → Advanced → Environment Variables):
+**Windows** — set as a System Environment Variable (Control Panel → System → Advanced → Environment Variables).
+
+Use **forward slashes** in the path — backslashes are invalid in JSON strings and will cause a parse error when OpenCode substitutes the variable into the config:
 
 ```
-OC_PLUGIN_LLP = C:\path\to\oc-plugin-llm-pricing
+OC_PLUGIN_LLP = C:/path/to/oc-plugin-llm-pricing
 ```
 
 **Linux / macOS** — add to `~/.bashrc`, `~/.zshrc`, or `~/.profile`:
