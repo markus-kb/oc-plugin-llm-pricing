@@ -1,7 +1,7 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui";
-import { createSignal } from "solid-js";
+import { createEffect, createSignal } from "solid-js";
 import { PricingSide } from "./pricing-side";
 
 const id = "llm-pricing";
@@ -79,15 +79,10 @@ const tui: TuiPlugin = async (api) => {
   // Fetch once at startup.
   await refresh();
 
-  // Seed history from config defaults; grows to max 3 via message.updated events.
-  const seedPlan = api.state.config?.agent?.plan?.model ?? "";
-  const seedBuild = api.state.config?.agent?.build?.model ?? "";
-  const [planHistory, setPlanHistory] = createSignal<string[]>(
-    seedPlan ? [seedPlan] : [],
-  );
-  const [buildHistory, setBuildHistory] = createSignal<string[]>(
-    seedBuild ? [seedBuild] : [],
-  );
+  // Start empty — config is not yet populated when the plugin factory runs.
+  // createEffect below seeds from config once api.state.ready becomes true.
+  const [planHistory, setPlanHistory] = createSignal<string[]>([]);
+  const [buildHistory, setBuildHistory] = createSignal<string[]>([]);
 
   // Push model to front of history, deduplicate, cap at 3.
   function pushHistory(
@@ -99,6 +94,18 @@ const tui: TuiPlugin = async (api) => {
       return [model, ...deduped].slice(0, 3);
     });
   }
+
+  // Seed history from config once the TUI is ready (api.state.config is
+  // populated asynchronously after mount — it is {} when the factory runs).
+  // Only seeds a mode if history is still empty to avoid overwriting real
+  // message history in the unlikely case ready fires after messages arrive.
+  createEffect(() => {
+    if (!api.state.ready) return;
+    const planModel = api.state.config?.agent?.plan?.model;
+    const buildModel = api.state.config?.agent?.build?.model;
+    if (planModel && planHistory().length === 0) pushHistory(setPlanHistory, planModel);
+    if (buildModel && buildHistory().length === 0) pushHistory(setBuildHistory, buildModel);
+  });
 
   // Each AssistantMessage carries the model actually used for that turn.
   // Update history so the sidebar always reflects the last 3 active models.
