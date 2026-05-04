@@ -1,7 +1,7 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui";
-import { createEffect, createSignal } from "solid-js";
+import { createSignal } from "solid-js";
 import { PricingSide } from "./pricing-side";
 
 const id = "llm-pricing";
@@ -80,7 +80,8 @@ const tui: TuiPlugin = async (api) => {
   await refresh();
 
   // Start empty — config is not yet populated when the plugin factory runs.
-  // createEffect below seeds from config once api.state.ready becomes true.
+  // getPlanConfig / getBuildConfig are passed as props so PricingSide can read
+  // api.state.config reactively inside createMemo at component render time.
   const [planHistory, setPlanHistory] = createSignal<string[]>([]);
   const [buildHistory, setBuildHistory] = createSignal<string[]>([]);
 
@@ -94,18 +95,6 @@ const tui: TuiPlugin = async (api) => {
       return [model, ...deduped].slice(0, 3);
     });
   }
-
-  // Seed history from config once the TUI is ready (api.state.config is
-  // populated asynchronously after mount — it is {} when the factory runs).
-  // Only seeds a mode if history is still empty to avoid overwriting real
-  // message history in the unlikely case ready fires after messages arrive.
-  createEffect(() => {
-    if (!api.state.ready) return;
-    const planModel = api.state.config?.agent?.plan?.model;
-    const buildModel = api.state.config?.agent?.build?.model;
-    if (planModel && planHistory().length === 0) pushHistory(setPlanHistory, planModel);
-    if (buildModel && buildHistory().length === 0) pushHistory(setBuildHistory, buildModel);
-  });
 
   // Each AssistantMessage carries the model actually used for that turn.
   // Update history so the sidebar always reflects the last 3 active models.
@@ -147,6 +136,14 @@ const tui: TuiPlugin = async (api) => {
     };
   };
 
+  // Thin accessors read api.state.config lazily. When called inside a
+  // createMemo in a SolidJS component, they track config reactively —
+  // re-evaluating automatically once bootstrap populates the config store.
+  const getPlanConfig = () =>
+    (api.state.config as any)?.agent?.plan?.model ?? "";
+  const getBuildConfig = () =>
+    (api.state.config as any)?.agent?.build?.model ?? "";
+
   api.slots.register({
     order: 60,
     slots: {
@@ -158,6 +155,8 @@ const tui: TuiPlugin = async (api) => {
             buildHistory={buildHistory()}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
+            getPlanConfig={getPlanConfig}
+            getBuildConfig={getBuildConfig}
           />
         );
       },

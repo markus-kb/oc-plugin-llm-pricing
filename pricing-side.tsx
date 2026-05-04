@@ -11,6 +11,10 @@ interface PricingSideProps {
   buildHistory: string[];
   getModelInfo: (model: string) => ModelInfo;
   onRefresh: () => Promise<void>;
+  // Accessor functions read api.state.config reactively inside createMemo.
+  // Used as fallback when history is empty (before any messages are sent).
+  getPlanConfig: () => string;
+  getBuildConfig: () => string;
 }
 
 function fmtCtx(contextLength: number | null): string {
@@ -62,6 +66,9 @@ interface ModeSectionProps {
   label: string;
   // Most-recent first; index 0 is the active model.
   history: string[];
+  // Reads api.state.config reactively — returns the configured model slug or "".
+  // Used as fallback when history is empty and config hasn't seeded yet.
+  getConfigModel: () => string;
   theme: TuiThemeCurrent;
   getModelInfo: (model: string) => ModelInfo;
 }
@@ -69,6 +76,14 @@ interface ModeSectionProps {
 function ModeSection(props: ModeSectionProps) {
   const [open, setOpen] = createSignal(true);
   const triangle = () => (open() ? "▼" : "▶");
+
+  // Reactively derive the display list: prefer real history, fall back to the
+  // configured model once api.state.config is populated (after bootstrap).
+  const displayHistory = createMemo(() => {
+    if (props.history.length > 0) return props.history;
+    const cfg = props.getConfigModel();
+    return cfg ? [cfg] : [];
+  });
 
   return (
     <box flexDirection="column" marginBottom={1}>
@@ -85,14 +100,14 @@ function ModeSection(props: ModeSectionProps) {
       </box>
       <Show when={open()}>
         <Show
-          when={props.history.length > 0}
+          when={displayHistory().length > 0}
           fallback={
             <text fg={props.theme.textMuted} paddingLeft={2}>
               (not configured)
             </text>
           }
         >
-          <For each={props.history}>
+          <For each={displayHistory()}>
             {(model, i) => (
               <ModelRow
                 model={model}
@@ -117,12 +132,14 @@ export function PricingSide(props: PricingSideProps) {
       <ModeSection
         label="Plan"
         history={props.planHistory}
+        getConfigModel={props.getPlanConfig}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
       <ModeSection
         label="Build"
         history={props.buildHistory}
+        getConfigModel={props.getBuildConfig}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
