@@ -7,8 +7,8 @@ import type { ModelInfo } from "./tui";
 
 interface PricingSideProps {
   theme: TuiThemeCurrent;
-  planHistory: string[];
-  buildHistory: string[];
+  planHistory: () => string[];
+  buildHistory: () => string[];
   getModelInfo: (model: string) => ModelInfo;
   onRefresh: () => Promise<void>;
   // Accessor functions read api.state.config reactively inside createMemo.
@@ -64,8 +64,8 @@ function ModelRow(props: ModelRowProps) {
 
 interface ModeSectionProps {
   label: string;
-  // Most-recent first; index 0 is the active model.
-  history: string[];
+  // Signal accessor — most-recent first; index 0 is the active model.
+  getHistory: () => string[];
   // Reads api.state.config reactively — returns the configured model slug or "".
   // Used as fallback when history is empty and config hasn't seeded yet.
   getConfigModel: () => string;
@@ -80,7 +80,8 @@ function ModeSection(props: ModeSectionProps) {
   // Reactively derive the display list: prefer real history, fall back to the
   // configured model once api.state.config is populated (after bootstrap).
   const displayHistory = createMemo(() => {
-    if (props.history.length > 0) return props.history;
+    const h = props.getHistory();
+    if (h.length > 0) return h;
     const cfg = props.getConfigModel();
     return cfg ? [cfg] : [];
   });
@@ -131,14 +132,14 @@ export function PricingSide(props: PricingSideProps) {
       </text>
       <ModeSection
         label="Plan"
-        history={props.planHistory}
+        getHistory={props.planHistory}
         getConfigModel={props.getPlanConfig}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
       <ModeSection
         label="Build"
-        history={props.buildHistory}
+        getHistory={props.buildHistory}
         getConfigModel={props.getBuildConfig}
         theme={props.theme}
         getModelInfo={props.getModelInfo}

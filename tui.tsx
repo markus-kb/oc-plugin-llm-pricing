@@ -151,8 +151,8 @@ const tui: TuiPlugin = async (api) => {
         return (
           <PricingSide
             theme={ctx.theme.current}
-            planHistory={planHistory()}
-            buildHistory={buildHistory()}
+            planHistory={planHistory}
+            buildHistory={buildHistory}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
             getPlanConfig={getPlanConfig}
