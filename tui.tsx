@@ -58,8 +58,6 @@ function parseModels(data: unknown, pricingMap: Map<string, ModelInfo>): void {
 }
 
 const tui: TuiPlugin = async (api) => {
-  console.log("[llm-pricing/tui] factory start");
-
   // pricingMap lives in the plugin factory — created once, shared across all slot renders.
   const pricingMap = new Map<string, ModelInfo>();
 
@@ -67,20 +65,14 @@ const tui: TuiPlugin = async (api) => {
   const [version, setVersion] = createSignal(0);
 
   const refresh = async () => {
-    console.log("[llm-pricing/tui] OpenRouter fetch start");
     try {
       const res = await fetch("https://openrouter.ai/api/v1/models");
-      if (!res.ok) {
-        console.log(`[llm-pricing/tui] OpenRouter fetch failed — status ${res.status}`);
-        return;
-      }
+      if (!res.ok) return;
       const data = await res.json();
       parseModels(data, pricingMap);
       setVersion((v) => v + 1);
-      console.log(`[llm-pricing/tui] OpenRouter fetch done — ${pricingMap.size} models loaded`);
-    } catch (err) {
+    } catch {
       // Fetch failures are silent — sidebar shows fallback "$0.00" values.
-      console.log(`[llm-pricing/tui] OpenRouter fetch error — ${err}`);
     }
   };
 
@@ -121,12 +113,10 @@ const tui: TuiPlugin = async (api) => {
   // PricingSide. The slot render function receives session_id from sidebar.tsx
   // and passes a getMessages accessor so PricingSide can read the Solid store
   // reactively — covering both new messages and session resume.
-  api.slots.register({
-    order: 60,
+  api.slots.register({    order: 60,
     slots: {
       sidebar_content(ctx, props) {
         const sessionId = props?.session_id as string | undefined;
-        console.log(`[llm-pricing/tui] sidebar_content render — session_id=${sessionId}`);
         // getMessages is called inside createMemo in PricingSide, so it
         // re-evaluates reactively whenever the session message store updates.
         const getMessages = () => {
@@ -145,7 +135,6 @@ const tui: TuiPlugin = async (api) => {
     },
   });
 
-  console.log("[llm-pricing/tui] slot registered");
 };
 
 const plugin: TuiPluginModule & { id: string } = {

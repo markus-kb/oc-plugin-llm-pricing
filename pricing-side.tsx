@@ -119,18 +119,8 @@ export function PricingSide(props: PricingSideProps) {
   // Derive plan and build history reactively from session messages.
   // Re-evaluates whenever getMessages() updates — covers new messages AND
   // session resume (messages are already in the store when the slot renders).
-  const planHistory = createMemo(() => {
-    const msgs = props.getMessages();
-    const result = deriveHistory(msgs, "plan");
-    console.log(
-      `[llm-pricing/pricing-side] history memo eval — plan=${result.length} entries, build=${deriveHistory(msgs, "build").length} entries`,
-    );
-    return result;
-  });
-
-  const buildHistory = createMemo(() => {
-    return deriveHistory(props.getMessages(), "build");
-  });
+  const planHistory = createMemo(() => deriveHistory(props.getMessages(), "plan"));
+  const buildHistory = createMemo(() => deriveHistory(props.getMessages(), "build"));
 
   return (
     <box flexDirection="column" paddingTop={1}>
