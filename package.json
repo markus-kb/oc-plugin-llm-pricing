@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "oc-plugin-llm-pricing",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OpenCode plugin — LLM pricing, context windows, and features for your last 3 models per agent mode",
   "type": "module",
   "keywords": [
@@ -14,8 +14,8 @@
   "files": [
     "server.ts",
     "tui.tsx",
-    "context.tsx",
-    "pricing-side.tsx"
+    "pricing-side.tsx",
+    "history.ts"
   ],
   "exports": {
     "./server": {
