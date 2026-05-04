@@ -3,18 +3,21 @@
 
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { deriveHistory } from "./history";
 import type { ModelInfo } from "./tui";
+
+interface AnyMsg {
+  role: string;
+}
 
 interface PricingSideProps {
   theme: TuiThemeCurrent;
-  planHistory: () => string[];
-  buildHistory: () => string[];
+  // Reactive accessor — returns all messages for the current session.
+  // Called inside createMemo so history re-derives on every message update
+  // (including session resume, where messages are already populated).
+  getMessages: () => ReadonlyArray<AnyMsg>;
   getModelInfo: (model: string) => ModelInfo;
   onRefresh: () => Promise<void>;
-  // Accessor functions read api.state.config reactively inside createMemo.
-  // Used as fallback when history is empty (before any messages are sent).
-  getPlanConfig: () => string;
-  getBuildConfig: () => string;
 }
 
 function fmtCtx(contextLength: number | null): string {
@@ -66,9 +69,6 @@ interface ModeSectionProps {
   label: string;
   // Signal accessor — most-recent first; index 0 is the active model.
   getHistory: () => string[];
-  // Reads api.state.config reactively — returns the configured model slug or "".
-  // Used as fallback when history is empty and config hasn't seeded yet.
-  getConfigModel: () => string;
   theme: TuiThemeCurrent;
   getModelInfo: (model: string) => ModelInfo;
 }
@@ -76,15 +76,6 @@ interface ModeSectionProps {
 function ModeSection(props: ModeSectionProps) {
   const [open, setOpen] = createSignal(true);
   const triangle = () => (open() ? "▼" : "▶");
-
-  // Reactively derive the display list: prefer real history, fall back to the
-  // configured model once api.state.config is populated (after bootstrap).
-  const displayHistory = createMemo(() => {
-    const h = props.getHistory();
-    if (h.length > 0) return h;
-    const cfg = props.getConfigModel();
-    return cfg ? [cfg] : [];
-  });
 
   return (
     <box flexDirection="column" marginBottom={1}>
@@ -101,14 +92,14 @@ function ModeSection(props: ModeSectionProps) {
       </box>
       <Show when={open()}>
         <Show
-          when={displayHistory().length > 0}
+          when={props.getHistory().length > 0}
           fallback={
             <text fg={props.theme.textMuted} paddingLeft={2}>
               (not configured)
             </text>
           }
         >
-          <For each={displayHistory()}>
+          <For each={props.getHistory()}>
             {(model, i) => (
               <ModelRow
                 model={model}
@@ -125,6 +116,22 @@ function ModeSection(props: ModeSectionProps) {
 }
 
 export function PricingSide(props: PricingSideProps) {
+  // Derive plan and build history reactively from session messages.
+  // Re-evaluates whenever getMessages() updates — covers new messages AND
+  // session resume (messages are already in the store when the slot renders).
+  const planHistory = createMemo(() => {
+    const msgs = props.getMessages();
+    const result = deriveHistory(msgs, "plan");
+    console.log(
+      `[llm-pricing/pricing-side] history memo eval — plan=${result.length} entries, build=${deriveHistory(msgs, "build").length} entries`,
+    );
+    return result;
+  });
+
+  const buildHistory = createMemo(() => {
+    return deriveHistory(props.getMessages(), "build");
+  });
+
   return (
     <box flexDirection="column" paddingTop={1}>
       <text fg={props.theme.text} bold paddingLeft={1} marginBottom={1}>
@@ -132,15 +139,13 @@ export function PricingSide(props: PricingSideProps) {
       </text>
       <ModeSection
         label="Plan"
-        getHistory={props.planHistory}
-        getConfigModel={props.getPlanConfig}
+        getHistory={planHistory}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />
       <ModeSection
         label="Build"
-        getHistory={props.buildHistory}
-        getConfigModel={props.getBuildConfig}
+        getHistory={buildHistory}
         theme={props.theme}
         getModelInfo={props.getModelInfo}
       />

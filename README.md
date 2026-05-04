@@ -56,7 +56,14 @@ OpenCode supports `{env:VAR}` substitution in config files. Set a variable on ea
 
 **Windows** — set as a System Environment Variable (Control Panel → System → Advanced → Environment Variables).
 
-Use **forward slashes** in the path — backslashes are invalid in JSON strings and will cause a parse error when OpenCode substitutes the variable into the config:
+Use **forward slashes** in the path. Windows backslashes are invalid escape characters in JSON, so when OpenCode substitutes the variable into the config it will fail with:
+
+```
+InvalidEscapeCharacter at line 6, column 6
+  ["C:\Users\you\...\oc-plugin-llm-pricing", { "enabled": true }]
+```
+
+Set the value with forward slashes to avoid this:
 
 ```
 OC_PLUGIN_LLP = C:/path/to/oc-plugin-llm-pricing

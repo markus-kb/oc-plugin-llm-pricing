@@ -58,6 +58,8 @@ function parseModels(data: unknown, pricingMap: Map<string, ModelInfo>): void {
 }
 
 const tui: TuiPlugin = async (api) => {
+  console.log("[llm-pricing/tui] factory start");
+
   // pricingMap lives in the plugin factory — created once, shared across all slot renders.
   const pricingMap = new Map<string, ModelInfo>();
 
@@ -65,46 +67,25 @@ const tui: TuiPlugin = async (api) => {
   const [version, setVersion] = createSignal(0);
 
   const refresh = async () => {
+    console.log("[llm-pricing/tui] OpenRouter fetch start");
     try {
       const res = await fetch("https://openrouter.ai/api/v1/models");
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.log(`[llm-pricing/tui] OpenRouter fetch failed — status ${res.status}`);
+        return;
+      }
       const data = await res.json();
       parseModels(data, pricingMap);
       setVersion((v) => v + 1);
-    } catch {
+      console.log(`[llm-pricing/tui] OpenRouter fetch done — ${pricingMap.size} models loaded`);
+    } catch (err) {
       // Fetch failures are silent — sidebar shows fallback "$0.00" values.
+      console.log(`[llm-pricing/tui] OpenRouter fetch error — ${err}`);
     }
   };
 
   // Fetch once at startup.
   await refresh();
-
-  // Start empty — config is not yet populated when the plugin factory runs.
-  // getPlanConfig / getBuildConfig are passed as props so PricingSide can read
-  // api.state.config reactively inside createMemo at component render time.
-  const [planHistory, setPlanHistory] = createSignal<string[]>([]);
-  const [buildHistory, setBuildHistory] = createSignal<string[]>([]);
-
-  // Push model to front of history, deduplicate, cap at 3.
-  function pushHistory(
-    set: (fn: (prev: string[]) => string[]) => void,
-    model: string,
-  ) {
-    set((prev) => {
-      const deduped = prev.filter((m) => m !== model);
-      return [model, ...deduped].slice(0, 3);
-    });
-  }
-
-  // Each AssistantMessage carries the model actually used for that turn.
-  // Update history so the sidebar always reflects the last 3 active models.
-  api.event.on("message.updated", (event) => {
-    const msg = event.properties.info;
-    if (msg.role !== "assistant") return;
-    const model = `${msg.providerID}/${msg.modelID}`;
-    if (msg.mode === "build") pushHistory(setBuildHistory, model);
-    else pushHistory(setPlanHistory, model);
-  });
 
   const getModelInfo = (model: string): ModelInfo => {
     // Reading version() registers a reactive dependency so callers inside
@@ -136,32 +117,35 @@ const tui: TuiPlugin = async (api) => {
     };
   };
 
-  // Thin accessors read api.state.config lazily. When called inside a
-  // createMemo in a SolidJS component, they track config reactively —
-  // re-evaluating automatically once bootstrap populates the config store.
-  const getPlanConfig = () =>
-    (api.state.config as any)?.agent?.plan?.model ?? "";
-  const getBuildConfig = () =>
-    (api.state.config as any)?.agent?.build?.model ?? "";
-
+  // History is derived reactively from the current session's messages inside
+  // PricingSide. The slot render function receives session_id from sidebar.tsx
+  // and passes a getMessages accessor so PricingSide can read the Solid store
+  // reactively — covering both new messages and session resume.
   api.slots.register({
     order: 60,
     slots: {
-      sidebar_content(ctx) {
+      sidebar_content(ctx, props) {
+        const sessionId = props?.session_id as string | undefined;
+        console.log(`[llm-pricing/tui] sidebar_content render — session_id=${sessionId}`);
+        // getMessages is called inside createMemo in PricingSide, so it
+        // re-evaluates reactively whenever the session message store updates.
+        const getMessages = () => {
+          if (!sessionId) return [];
+          return api.state.session.messages(sessionId);
+        };
         return (
           <PricingSide
             theme={ctx.theme.current}
-            planHistory={planHistory}
-            buildHistory={buildHistory}
+            getMessages={getMessages}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
-            getPlanConfig={getPlanConfig}
-            getBuildConfig={getBuildConfig}
           />
         );
       },
     },
   });
+
+  console.log("[llm-pricing/tui] slot registered");
 };
 
 const plugin: TuiPluginModule & { id: string } = {

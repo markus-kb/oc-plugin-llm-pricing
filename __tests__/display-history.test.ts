@@ -1,124 +1,91 @@
-/**
- * Tests for the displayHistory reactive fallback logic used in ModeSection.
- *
- * The key behaviour: when real message history is empty, the sidebar must fall
- * back to the configured model (read via an accessor that tracks api.state.config
- * reactively). Once real messages arrive the accessor result is ignored.
- *
- * We test the pure reactive logic isolated from @opentui/solid and the TUI
- * runtime, using solid-js createRoot / createSignal / createMemo directly.
- */
-
-// Import the reactive build directly. Under the "node" condition bun resolves
-// solid-js to dist/server.js (non-reactive SSR build); dist/solid.js is the
-// real reactive build. Types are mapped to solid-js in __tests__/tsconfig.json.
-import { createMemo, createRoot, createSignal } from "solid-js/dist/solid.js";
 import { describe, expect, test } from "bun:test";
+import { deriveHistory } from "../history";
 
-/**
- * Mirror of the displayHistory memo inside ModeSection.
- * Returns `history` when non-empty; falls back to `[getConfigModel()]`
- * if the accessor returns a non-empty string; otherwise returns `[]`.
- */
-function makeDisplayHistory(
-  getHistory: () => string[],
-  getConfigModel: () => string,
-) {
-  return createMemo(() => {
-    const h = getHistory();
-    if (h.length > 0) return h;
-    const cfg = getConfigModel();
-    return cfg ? [cfg] : [];
-  });
+// Helper to build a fake AssistantMessage with only the fields deriveHistory needs.
+function asst(providerID: string, modelID: string, mode: string) {
+  return { role: "assistant" as const, providerID, modelID, mode };
+}
+function user() {
+  return { role: "user" as const };
 }
 
-describe("displayHistory", () => {
-  test("returns empty array when both history and config are empty", () => {
-    createRoot((dispose: () => void) => {
-      const getHistory = () => [];
-      const getConfigModel = () => "";
-      const display = makeDisplayHistory(getHistory, getConfigModel);
-      expect(display()).toEqual([]);
-      dispose();
-    });
+describe("deriveHistory", () => {
+  test("empty messages → empty history", () => {
+    expect(deriveHistory([], "plan")).toEqual([]);
   });
 
-  test("returns config model as single-item list when history is empty and config is set", () => {
-    createRoot((dispose: () => void) => {
-      const getHistory = () => [];
-      const getConfigModel = () => "anthropic/claude-sonnet-4-5";
-      const display = makeDisplayHistory(getHistory, getConfigModel);
-      expect(display()).toEqual(["anthropic/claude-sonnet-4-5"]);
-      dispose();
-    });
+  test("user-only messages → empty history", () => {
+    expect(deriveHistory([user(), user()], "plan")).toEqual([]);
   });
 
-  test("prefers real history over config model when history is non-empty", () => {
-    createRoot((dispose: () => void) => {
-      const getHistory = () => ["openai/gpt-4o", "anthropic/claude-3-opus"];
-      const getConfigModel = () => "anthropic/claude-sonnet-4-5";
-      const display = makeDisplayHistory(getHistory, getConfigModel);
-      expect(display()).toEqual(["openai/gpt-4o", "anthropic/claude-3-opus"]);
-      dispose();
-    });
+  test("single assistant message → one entry", () => {
+    const msgs = [user(), asst("anthropic", "claude-3-5-sonnet", "plan")];
+    expect(deriveHistory(msgs, "plan")).toEqual(["anthropic/claude-3-5-sonnet"]);
   });
 
-  test("switches from config fallback to real history when first message arrives", () => {
-    createRoot((dispose: () => void) => {
-      // Simulate: config is populated, history starts empty, then a message arrives.
-      const [history, setHistory] = createSignal<string[]>([]);
-      const getConfigModel = () => "anthropic/claude-sonnet-4-5";
-      const display = makeDisplayHistory(history, getConfigModel);
-
-      // Before any message: should show config model.
-      expect(display()).toEqual(["anthropic/claude-sonnet-4-5"]);
-
-      // First real message arrives.
-      setHistory(["openai/gpt-4o"]);
-      expect(display()).toEqual(["openai/gpt-4o"]);
-
-      dispose();
-    });
+  test("ignores messages from the wrong mode", () => {
+    const msgs = [
+      asst("anthropic", "claude-3-5-sonnet", "build"),
+      asst("openai", "gpt-4o", "plan"),
+    ];
+    expect(deriveHistory(msgs, "plan")).toEqual(["openai/gpt-4o"]);
+    expect(deriveHistory(msgs, "build")).toEqual(["anthropic/claude-3-5-sonnet"]);
   });
 
-  test("config accessor is reactive — updates display when config changes from empty to populated", () => {
-    createRoot((dispose: () => void) => {
-      // Simulate api.state.config starting as {} (bootstrap not done yet)
-      // then being populated when bootstrap completes.
-      const [configModel, setConfigModel] = createSignal("");
-      const getHistory = () => [];
-      const display = makeDisplayHistory(getHistory, configModel);
-
-      // Before bootstrap: empty.
-      expect(display()).toEqual([]);
-
-      // Bootstrap completes, config populated.
-      setConfigModel("anthropic/claude-sonnet-4-5");
-      expect(display()).toEqual(["anthropic/claude-sonnet-4-5"]);
-
-      dispose();
-    });
+  test("deduplicates — same model used twice → appears once", () => {
+    const msgs = [
+      asst("anthropic", "claude-3-5-sonnet", "plan"),
+      asst("anthropic", "claude-3-5-sonnet", "plan"),
+    ];
+    expect(deriveHistory(msgs, "plan")).toEqual(["anthropic/claude-3-5-sonnet"]);
   });
 
-  test("real history takes priority even when config is also populated", () => {
-    createRoot((dispose: () => void) => {
-      const [history, setHistory] = createSignal<string[]>([]);
-      const [configModel, setConfigModel] = createSignal("");
-      const display = makeDisplayHistory(history, configModel);
+  test("caps at 3 most-recent unique models", () => {
+    const msgs = [
+      asst("openai", "gpt-4o-mini", "plan"),   // oldest
+      asst("openai", "gpt-4o", "plan"),
+      asst("anthropic", "claude-3-5-sonnet", "plan"),
+      asst("anthropic", "claude-opus-4", "plan"), // newest
+    ];
+    // Most-recent first: opus-4, sonnet, gpt-4o (gpt-4o-mini is 4th, excluded)
+    expect(deriveHistory(msgs, "plan")).toEqual([
+      "anthropic/claude-opus-4",
+      "anthropic/claude-3-5-sonnet",
+      "openai/gpt-4o",
+    ]);
+  });
 
-      // Both arrive — config first.
-      setConfigModel("anthropic/claude-sonnet-4-5");
-      expect(display()).toEqual(["anthropic/claude-sonnet-4-5"]);
+  test("most-recent occurrence wins when deduplicating across 3-cap", () => {
+    // Pattern: A, B, C, A — A appears twice; most-recent A should be at front
+    // and B should be dropped (A, C, and latest-A counted — only 2 unique if A deduped)
+    const msgs = [
+      asst("openai", "gpt-4o-mini", "plan"),         // oldest — 4th unique would be here
+      asst("anthropic", "claude-3-5-sonnet", "plan"),
+      asst("openai", "gpt-4o", "plan"),
+      asst("openai", "gpt-4o-mini", "plan"),          // newest, same as oldest → deduped
+    ];
+    // Newest-first scan: gpt-4o-mini (seen), gpt-4o (new #2), claude-3-5-sonnet (new #3), gpt-4o-mini (already seen)
+    expect(deriveHistory(msgs, "plan")).toEqual([
+      "openai/gpt-4o-mini",
+      "openai/gpt-4o",
+      "anthropic/claude-3-5-sonnet",
+    ]);
+  });
 
-      // Then a real message.
-      setHistory(["openai/gpt-4o"]);
-      expect(display()).toEqual(["openai/gpt-4o"]);
-
-      // Config change is now ignored.
-      setConfigModel("google/gemini-pro");
-      expect(display()).toEqual(["openai/gpt-4o"]);
-
-      dispose();
-    });
+  test("mixed modes — plan and build derive independently", () => {
+    const msgs = [
+      asst("anthropic", "claude-3-5-sonnet", "plan"),
+      asst("openai", "gpt-4o", "build"),
+      asst("anthropic", "claude-opus-4", "plan"),
+      asst("openai", "o3", "build"),
+    ];
+    expect(deriveHistory(msgs, "plan")).toEqual([
+      "anthropic/claude-opus-4",
+      "anthropic/claude-3-5-sonnet",
+    ]);
+    expect(deriveHistory(msgs, "build")).toEqual([
+      "openai/o3",
+      "openai/gpt-4o",
+    ]);
   });
 });
