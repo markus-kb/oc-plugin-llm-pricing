@@ -1,0 +1,3 @@
+[test]
+# solid-js "node" condition maps to server.js (non-reactive SSR build).
+# The test file imports solid-js/dist/solid.js directly to get the reactive build.
