@@ -30,8 +30,9 @@ The cloned directory is what OpenCode loads directly — no build step required:
 oc-plugin-llm-pricing/
 ├── server.ts          # server plugin (chat tools, OpenRouter fetch)
 ├── tui.tsx            # TUI plugin (sidebar slot registration)
-├── pricing-side.tsx   # sidebar UI component
-├── history.ts         # pure history-derivation logic (unit-tested)
+├── src/
+│   ├── pricing-side.tsx   # sidebar UI component
+│   └── history.ts         # pure history-derivation logic (unit-tested)
 ├── package.json
 └── tsconfig.json
 ```
@@ -175,13 +176,13 @@ History updates immediately in both the tool output and the sidebar.
 
 Data is cached in memory for the session. Use `fetch-llm-pricing` or restart OpenCode to refresh.
 
-### TUI plugin (`tui.tsx` + `pricing-side.tsx` + `history.ts`)
+### TUI plugin (`tui.tsx` + `src/pricing-side.tsx` + `src/history.ts`)
 
 Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
 
 1. Fetches OpenRouter data independently at startup (no shared memory with the server process).
 2. Passes a `getMessages` accessor to `PricingSide` — a thin wrapper around `api.state.session.messages(session_id)`, which reads directly from the Solid store for the current session.
-3. Inside `PricingSide`, two `createMemo` calls derive `planHistory` and `buildHistory` by scanning messages newest-first via the pure `deriveHistory(messages, mode)` function in `history.ts`.
+3. Inside `PricingSide`, two `createMemo` calls derive `planHistory` and `buildHistory` by scanning messages newest-first via the pure `deriveHistory(messages, mode)` function in `src/history.ts`.
 4. Because `getMessages()` reads from the Solid store, the memos re-evaluate automatically on every message update — covering both new messages in a live session and existing messages when a session is resumed or opened.
 
 The slot render function receives `session_id` from `sidebar.tsx` via the second argument (`props`), making the correct session's messages available without any global state or event accumulation.
@@ -206,8 +207,8 @@ No build step — OpenCode runs `.ts`/`.tsx` source directly.
 |---|---|
 | `server.ts` | Server plugin: OpenRouter fetch, pricing map, three chat tools |
 | `tui.tsx` | TUI plugin: factory closure, slot registration, `getMessages` accessor |
-| `pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with reactive history |
-| `history.ts` | Pure `deriveHistory(messages, mode)` function — no Solid dependency, unit-tested |
+| `src/pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with reactive history |
+| `src/history.ts` | Pure `deriveHistory(messages, mode)` function — no Solid dependency, unit-tested |
 | `__tests__/display-history.test.ts` | 8 unit tests for `deriveHistory` |
 
 ---

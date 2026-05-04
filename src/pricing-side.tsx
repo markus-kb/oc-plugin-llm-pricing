@@ -4,7 +4,7 @@
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { deriveHistory } from "./history";
-import type { ModelInfo } from "./tui";
+import type { ModelInfo } from "../tui";
 
 interface AnyMsg {
   role: string;

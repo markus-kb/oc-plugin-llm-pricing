@@ -2,7 +2,7 @@
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui";
 import { createSignal } from "solid-js";
-import { PricingSide } from "./pricing-side";
+import { PricingSide } from "./src/pricing-side";
 
 const id = "llm-pricing";
 

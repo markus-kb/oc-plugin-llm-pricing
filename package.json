@@ -14,8 +14,7 @@
   "files": [
     "server.ts",
     "tui.tsx",
-    "pricing-side.tsx",
-    "history.ts"
+    "src"
   ],
   "exports": {
     "./server": {
