@@ -3,6 +3,7 @@
 
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { formatContextLength } from "./format";
 import { deriveHistory } from "./history";
 import type { ModelInfo } from "../tui";
 
@@ -21,8 +22,7 @@ interface PricingSideProps {
 }
 
 function fmtCtx(contextLength: number | null): string {
-  if (!contextLength) return "N/A";
-  return `${Math.round(contextLength / 1000)}K`;
+  return formatContextLength(contextLength);
 }
 
 function fmtPrice(perM: number): string {
@@ -124,7 +124,7 @@ export function PricingSide(props: PricingSideProps) {
 
   return (
     <box flexDirection="column" paddingTop={1}>
-      <text fg={props.theme.text} bold paddingLeft={1} marginBottom={1}>
+      <text fg={props.theme.text} bold>
         LLM Pricing
       </text>
       <ModeSection
