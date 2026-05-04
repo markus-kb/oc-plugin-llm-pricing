@@ -4,18 +4,19 @@
 
 A lightweight, no-config plugin that fetches fresh data from OpenRouter on startup. It gives you input/output costs (USD per million tokens), context length, and key capabilities while you work — both as chat tools and as a live sidebar panel.
 
-- ✅ Last 3 models per mode in the sidebar (most-recent first, active marked with `→`)
-- ✅ Sidebar updates after each completed message (requires a response to detect model in use)
-- ✅ Clean display names (no provider prefixes)
-- ✅ OpenCode Zen fallback when a model isn't in OpenRouter data
-- ✅ Three tools: `show-llm-pricing`, `fetch-llm-pricing`, `update-llm-selection`
-- ✅ Zero runtime dependencies, pure TypeScript
+- Last 3 models per mode in the sidebar (most-recent first, active marked with `→`)
+- Sidebar populated immediately on session resume — no messages required
+- Sidebar updates reactively as new messages complete
+- Clean display names (no provider prefixes)
+- OpenCode Zen fallback when a model isn't in OpenRouter data
+- Three chat tools: `show-llm-pricing`, `fetch-llm-pricing`, `update-llm-selection`
+- Zero runtime dependencies, pure TypeScript
 
 ---
 
 ## Installation
 
-This plugin is not published to npm. Install it by cloning the repo and referencing it via a local path in your project's OpenCode config.
+This plugin is not published to npm. Install it by cloning the repo and referencing it via a local path in your OpenCode config.
 
 **1. Clone the repo** to wherever you keep local tools — e.g. `~/plugins/oc-plugin-llm-pricing`:
 
@@ -23,18 +24,19 @@ This plugin is not published to npm. Install it by cloning the repo and referenc
 git clone https://github.com/markus-kb/oc-plugin-llm-pricing ~/plugins/oc-plugin-llm-pricing
 ```
 
-The cloned directory contains the plugin source OpenCode loads directly — no build step required:
+The cloned directory is what OpenCode loads directly — no build step required:
 
 ```
 oc-plugin-llm-pricing/
 ├── server.ts          # server plugin (chat tools, OpenRouter fetch)
 ├── tui.tsx            # TUI plugin (sidebar slot registration)
 ├── pricing-side.tsx   # sidebar UI component
+├── history.ts         # pure history-derivation logic (unit-tested)
 ├── package.json
 └── tsconfig.json
 ```
 
-**2. Add it to your project's `.opencode/opencode.json`** (create the file if it doesn't exist), pointing at the directory you cloned into:
+**2. Add it to your project's `.opencode/opencode.json`** (create the file if it doesn't exist):
 
 ```jsonc
 // your-project/.opencode/opencode.json
@@ -50,7 +52,7 @@ You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`) or an
 
 ### Global install (shared across all projects, across machines)
 
-If you use a shared `opencode.json` / `opencode.jsonc` (e.g. `~/.config/opencode/opencode.json`) across multiple machines where the plugin is cloned to different paths, use an environment variable instead of a hard-coded path.
+If you use a shared `opencode.json` / `opencode.jsonc` across multiple machines where the plugin is cloned to different paths, use an environment variable instead of a hard-coded path.
 
 OpenCode supports `{env:VAR}` substitution in config files. Set a variable on each machine pointing to wherever the repo is cloned:
 
@@ -107,7 +109,7 @@ OpenCode substitutes `{env:OC_PLUGIN_LLP}` before resolving the plugin path. Eac
 
 ### Sidebar panel
 
-The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the last 3 models used per agent mode (most-recent first), updating automatically whenever a message completes (via `message.updated` events — the `AssistantMessage` carries the model actually used for that turn). The active model is marked with `→`.
+The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the last 3 models used per agent mode (most-recent first), updating automatically as messages complete. The active model is marked with `→`.
 
 ```
 LLM Pricing
@@ -167,36 +169,22 @@ History updates immediately in both the tool output and the sidebar.
 
 1. On startup, fetches the full OpenRouter models list (`https://openrouter.ai/api/v1/models`).
 2. Enriches each model with pricing, context window, and features.
-3. Reads `opencode.json` (global + project) to seed Plan/Build history.
+3. Reads `opencode.json` (global + project) to seed Plan/Build history from configured model slugs.
 4. The `config` hook refines history with the resolved config (moves configured models to front).
 5. Falls back gracefully to `$0.00 / N/A` for any model not found in OpenRouter data.
 
 Data is cached in memory for the session. Use `fetch-llm-pricing` or restart OpenCode to refresh.
 
-### TUI plugin (`tui.tsx` + `pricing-side.tsx`)
+### TUI plugin (`tui.tsx` + `pricing-side.tsx` + `history.ts`)
 
 Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
 
 1. Fetches OpenRouter data independently at startup (no shared memory with the server process).
-2. Seeds `planHistory`/`buildHistory` signals from `api.state.config` (the config default).
-3. Listens for `message.updated` events via `api.event.on` — each `AssistantMessage` carries `providerID`, `modelID`, and `mode`, so the history signals grow to track the last 3 models per mode.
-4. `PricingSide` re-renders reactively whenever the history signals change.
+2. Passes a `getMessages` accessor to `PricingSide` — a thin wrapper around `api.state.session.messages(session_id)`, which reads directly from the Solid store for the current session.
+3. Inside `PricingSide`, two `createMemo` calls derive `planHistory` and `buildHistory` by scanning messages newest-first via the pure `deriveHistory(messages, mode)` function in `history.ts`.
+4. Because `getMessages()` reads from the Solid store, the memos re-evaluate automatically on every message update — covering both new messages in a live session and existing messages when a session is resumed or opened.
 
----
-
-## Configuration (Optional)
-
-The plugin works out of the box. Set these in your config to seed initial model history:
-
-```jsonc
-// ~/.config/opencode/opencode.json  or  ./opencode.json
-{
-  "agent": {
-    "plan": { "model": "anthropic/claude-3-5-sonnet-20241022" },
-    "build": { "model": "anthropic/claude-3-5-sonnet-20241022" }
-  }
-}
-```
+The slot render function receives `session_id` from `sidebar.tsx` via the second argument (`props`), making the correct session's messages available without any global state or event accumulation.
 
 ---
 
@@ -204,7 +192,8 @@ The plugin works out of the box. Set these in your config to seed initial model 
 
 ```bash
 npm install          # install devDependencies (type checking only)
-npm run typecheck    # tsc --noEmit
+npm run test         # bun test
+npm run typecheck    # tsc --noEmit (main + __tests__)
 npm run check        # biome lint + format
 npm run check:write  # auto-fix lint + format
 ```
@@ -216,14 +205,16 @@ No build step — OpenCode runs `.ts`/`.tsx` source directly.
 | File | Purpose |
 |---|---|
 | `server.ts` | Server plugin: OpenRouter fetch, pricing map, three chat tools |
-| `tui.tsx` | TUI plugin: factory closure, event listener, slot registration |
-| `pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with live pricing |
+| `tui.tsx` | TUI plugin: factory closure, slot registration, `getMessages` accessor |
+| `pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with reactive history |
+| `history.ts` | Pure `deriveHistory(messages, mode)` function — no Solid dependency, unit-tested |
+| `__tests__/display-history.test.ts` | 8 unit tests for `deriveHistory` |
 
 ---
 
 ## Acknowledgements
 
-The TUI sidebar architecture (slot registration pattern, factory closure for shared state, and `onMouseDown` usage etc) was informed by studying [oc-plugin-vault-tec](https://github.com/kommander/oc-plugin-vault-tec) by [@kommander](https://github.com/kommander). Thank you for the great pllugin!
+The TUI sidebar architecture (slot registration pattern, factory closure for shared state, and `onMouseDown` usage) was informed by studying [oc-plugin-vault-tec](https://github.com/kommander/oc-plugin-vault-tec) by [@kommander](https://github.com/kommander). Thank you for the great plugin!
 
 ---
 

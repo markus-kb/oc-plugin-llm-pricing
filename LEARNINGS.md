@@ -91,9 +91,9 @@ Both are valid — but the key mistake was using `opencode.jsonc` (not recognise
 
 ---
 
-## 8. `message.updated` is the correct hook for tracking active model
+## 8. `message.updated` reveals the `AssistantMessage` shape — but event accumulation is the wrong history strategy
 
-The `AssistantMessage` type carries `providerID`, `modelID`, and `mode` (`"plan"` or `"build"`). Listen via:
+The `AssistantMessage` type carries `providerID`, `modelID`, and `mode` (`"plan"` or `"build"`). The event fires as:
 
 ```ts
 api.event.on("message.updated", (event) => {
@@ -103,6 +103,70 @@ api.event.on("message.updated", (event) => {
   // use msg.mode to route to plan or build history
 });
 ```
+
+**However**, accumulating history via events is fragile: events are only fired for the current session, so resuming an old session yields zero events and an empty sidebar. See item 19 for the correct approach.
+
+---
+
+## 19. Derive sidebar history from session messages, not from events
+
+**Error:** Accumulating `planHistory` / `buildHistory` by pushing into arrays on every `message.updated` event. This works during a live session but produces an empty sidebar when a session is resumed, because `message.updated` is not replayed for existing messages.
+
+**Fix:** Read history reactively from `api.state.session.messages(sessionID)`, which is pre-populated from the store on resume:
+
+```ts
+// In tui.tsx factory — create a reactive accessor for the current session's messages:
+const getMessages = () => {
+  const id = api.state.session.current();
+  if (!id) return [];
+  return api.state.session.messages(id) ?? [];
+};
+
+// Pass getMessages down as a prop to PricingSide.
+// Inside PricingSide, derive history with createMemo:
+const planHistory = createMemo(() => deriveHistory(props.getMessages(), "plan"));
+const buildHistory = createMemo(() => deriveHistory(props.getMessages(), "build"));
+```
+
+`api.state.session.messages(id)` returns the Solid store array — reactive and already populated when a session is opened. `createMemo` re-evaluates automatically on every change, covering both live updates and resume.
+
+---
+
+## 20. Extract pure derivation logic to a dependency-free module for testability
+
+**Error:** Putting `deriveHistory` logic inline in `pricing-side.tsx`. The file imports from `@opentui/solid` and uses JSX, making it impossible to import in a test without pulling in those runtimes.
+
+**Fix:** Extract the pure function to a separate file (`history.ts`) with zero non-standard imports:
+
+```ts
+// history.ts
+export function deriveHistory(messages: readonly Message[], mode: "plan" | "build"): string[] { ... }
+```
+
+Tests import `history.ts` directly. `pricing-side.tsx` imports from `history.ts`. No Solid/JSX involvement in tests at all.
+
+---
+
+## 21. The `sidebar_content` slot render function receives `(ctx, props)` — use `props` for session ID
+
+**Error:** Slot render function declared as `sidebar_content(ctx)` — only one parameter. Trying to read `api.state.session.current()` reactively inside the slot function, which runs outside any reactive owner.
+
+**Fix:** The slot render function receives a second argument `props` containing `session_id`:
+
+```ts
+api.slots.register({
+  slots: {
+    sidebar_content(ctx, props) {
+      // props.session_id is the session whose sidebar is being rendered
+      const getMessages = () =>
+        api.state.session.messages(props.session_id) ?? [];
+      return <PricingSide getMessages={getMessages} getModelInfo={getModelInfo} />;
+    },
+  },
+});
+```
+
+Using `props.session_id` directly is more reliable than calling `api.state.session.current()` — it is always the correct session for this sidebar instance.
 
 ---
 
