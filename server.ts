@@ -1,5 +1,7 @@
+import { homedir } from "node:os";
 import type { Plugin, PluginInput, PluginModule } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { configPaths } from "./src/config";
 
 interface ModelInfo {
   inputPerM: number;
@@ -104,12 +106,10 @@ const server: Plugin = async ({ client, $, directory }) => {
   await fetchOpenRouterData(client);
 
   async function loadInitialModels() {
-    const paths = [
-      `${Bun.env.HOME ?? Bun.env.USERPROFILE}/.config/opencode/opencode.json`,
-      `${Bun.env.HOME ?? Bun.env.USERPROFILE}/.config/opencode/opencode.jsonc`,
-      `${directory}/opencode.json`,
-      `${directory}/.opencode/opencode.json`,
-    ];
+    // homedir() resolves HOME/USERPROFILE in both Bun and Node; the previous
+    // Bun.env.HOME reference crashed the desktop's Node-compiled sidecar with
+    // "Bun is not defined" at plugin load.
+    const paths = configPaths(homedir(), directory);
     for (const path of paths) {
       try {
         const content = await $`cat ${path}`.text().catch(() => null);
