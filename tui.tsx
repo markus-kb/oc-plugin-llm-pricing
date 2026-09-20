@@ -1,10 +1,8 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/solid */
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui";
+import { Plugin } from "@opencode/plugin/tui";
 import { createSignal } from "solid-js";
 import { PricingSide } from "./src/pricing-side";
-
-const id = "llm-pricing";
 
 // ModelInfo mirrors the shape in server.ts; kept local to avoid cross-process imports.
 export interface ModelInfo {
@@ -57,89 +55,87 @@ function parseModels(data: unknown, pricingMap: Map<string, ModelInfo>): void {
   }
 }
 
-const tui: TuiPlugin = async (api) => {
-  // pricingMap lives in the plugin factory — created once, shared across all slot renders.
-  const pricingMap = new Map<string, ModelInfo>();
+export default Plugin.define({
+  id: "llm-pricing",
+  async setup(context) {
+    // pricingMap lives in the plugin setup — created once, shared across all
+    // slot renders.
+    const pricingMap = new Map<string, ModelInfo>();
 
-  // version is bumped after each OpenRouter fetch so getModelInfo re-evaluates.
-  const [version, setVersion] = createSignal(0);
+    // version is bumped after each OpenRouter fetch so getModelInfo re-evaluates.
+    const [version, setVersion] = createSignal(0);
 
-  const refresh = async () => {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/models");
-      if (!res.ok) return;
-      const data = await res.json();
-      parseModels(data, pricingMap);
-      setVersion((v) => v + 1);
-    } catch {
-      // Fetch failures are silent — sidebar shows fallback "$0.00" values.
-    }
-  };
+    const refresh = async () => {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/models");
+        if (!res.ok) return;
+        const data = await res.json();
+        parseModels(data, pricingMap);
+        setVersion((v) => v + 1);
+      } catch {
+        // Fetch failures are silent — sidebar shows fallback "$0.00" values.
+      }
+    };
 
-  // Fetch once at startup.
-  await refresh();
+    // Fetch once at startup.
+    await refresh();
 
-  const getModelInfo = (model: string): ModelInfo => {
-    // Reading version() registers a reactive dependency so callers inside
-    // createMemo re-evaluate after each OpenRouter fetch.
-    version();
-    if (!model) {
+    const getModelInfo = (model: string): ModelInfo => {
+      // Reading version() registers a reactive dependency so callers inside
+      // createMemo re-evaluate after each OpenRouter fetch.
+      version();
+      if (!model) {
+        return {
+          inputPerM: 0,
+          outputPerM: 0,
+          contextLength: null,
+          displayName: "—",
+          features: [],
+        };
+      }
+      const exact = pricingMap.get(model);
+      if (exact) return exact;
+      const name = norm(
+        model.includes("/") ? (model.split("/").at(-1) ?? model) : model,
+      );
+      for (const [key, info] of pricingMap) {
+        if (norm(key.split("/").pop() ?? key) === name) return info;
+      }
       return {
         inputPerM: 0,
         outputPerM: 0,
         contextLength: null,
-        displayName: "—",
+        displayName: model.split("/").pop() ?? model,
         features: [],
       };
-    }
-    const exact = pricingMap.get(model);
-    if (exact) return exact;
-    const name = norm(
-      model.includes("/") ? (model.split("/").at(-1) ?? model) : model,
-    );
-    for (const [key, info] of pricingMap) {
-      if (norm(key.split("/").pop() ?? key) === name) return info;
-    }
-    return {
-      inputPerM: 0,
-      outputPerM: 0,
-      contextLength: null,
-      displayName: model.split("/").pop() ?? model,
-      features: [],
     };
-  };
 
-  // History is derived reactively from the current session's messages inside
-  // PricingSide. The slot render function receives session_id from sidebar.tsx
-  // and passes a getMessages accessor so PricingSide can read the Solid store
-  // reactively — covering both new messages and session resume.
-  api.slots.register({    order: 60,
-    slots: {
-      sidebar_content(ctx, props) {
-        const sessionId = props?.session_id as string | undefined;
+    // History is derived reactively from the current session's messages inside
+    // PricingSide. The slot render receives session_id from the sidebar slot
+    // input and builds a getMessages accessor so PricingSide can read the
+    // Solid data store reactively — covering both new messages and session
+    // resume. The V1 api.slots.register("sidebar_content") becomes a claim on
+    // the "sidebar.content" slot path; claim order replaces the old `order`.
+    const unregister = context.ui.slot({
+      append: "sidebar.content",
+      render: ({ sessionID }) => {
         // getMessages is called inside createMemo in PricingSide, so it
         // re-evaluates reactively whenever the session message store updates.
         const getMessages = () => {
-          if (!sessionId) return [];
-          return api.state.session.messages(sessionId);
+          if (!sessionID) return [];
+          return context.data.session.message.list(sessionID);
         };
         return (
           <PricingSide
-            theme={ctx.theme.current}
             getMessages={getMessages}
             getModelInfo={getModelInfo}
             onRefresh={refresh}
           />
         );
       },
-    },
-  });
+    });
 
-};
-
-const plugin: TuiPluginModule & { id: string } = {
-  id,
-  tui,
-};
-
-export default plugin;
+    // Disposing the claim removes the slot contribution when the plugin unloads.
+    return unregister;
+  },
+});

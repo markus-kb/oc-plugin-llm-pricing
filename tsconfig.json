@@ -8,15 +8,7 @@
     "esModuleInterop": true,
     "noEmit": true,
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
-    "paths": {
-      "@opencode-ai/plugin": [
-        "./.opencode/node_modules/@opencode-ai/plugin/dist/index.d.ts"
-      ],
-      "@opencode-ai/plugin/*": [
-        "./.opencode/node_modules/@opencode-ai/plugin/dist/*"
-      ]
-    }
+    "jsxImportSource": "@opentui/solid"
   },
   "include": ["server.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules", "__tests__"]

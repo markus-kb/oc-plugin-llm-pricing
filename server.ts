@@ -1,6 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import type { Plugin, PluginInput, PluginModule } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
 import { configPaths } from "./src/config";
 
 interface ModelInfo {
@@ -53,9 +53,7 @@ export function getModelInfo(model: string): ModelInfo {
   };
 }
 
-async function fetchOpenRouterData(
-  client: PluginInput["client"],
-): Promise<void> {
+async function fetchOpenRouterData(): Promise<void> {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -84,92 +82,115 @@ async function fetchOpenRouterData(
       });
     }
 
-    await client.app.log({
-      body: {
-        service: "llm-pricing-plugin",
-        level: "info" as const,
-        message: `Fetched data for ${pricingMap.size} models from OpenRouter`,
-      },
-    });
+    // V2 has no client.app.log hook; plain console output lands in the server
+    // log, which is where the V1 log call surfaced anyway.
+    console.log(
+      `[llm-pricing] Fetched data for ${pricingMap.size} models from OpenRouter`,
+    );
   } catch (err) {
-    await client.app.log({
-      body: {
-        service: "llm-pricing-plugin",
-        level: "error" as const,
-        message: `OpenRouter fetch failed: ${err instanceof Error ? err.message : String(err)}`,
-      },
-    });
+    console.error(
+      `[llm-pricing] OpenRouter fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
-const server: Plugin = async ({ client, $, directory }) => {
-  await fetchOpenRouterData(client);
+export default Plugin.define({
+  id: "llm-pricing",
+  async setup(ctx) {
+    await fetchOpenRouterData();
 
-  async function loadInitialModels() {
-    // homedir() resolves HOME/USERPROFILE in both Bun and Node; the previous
-    // Bun.env.HOME reference crashed the desktop's Node-compiled sidecar with
-    // "Bun is not defined" at plugin load.
-    const paths = configPaths(homedir(), directory);
-    for (const path of paths) {
+    // Seed history from the agents' configured models — the V2 replacement
+    // for the V1 `config` hook, which no longer exists.
+    for (const agentID of ["plan", "build"] as const) {
       try {
-        const content = await $`cat ${path}`.text().catch(() => null);
-        if (!content) continue;
-        const stripped = content.replace(/\/\/[^\n]*/g, "");
-        const config = JSON.parse(stripped);
-        if (config.agent?.plan?.model)
-          addToHistory("plan", config.agent.plan.model);
-        if (config.agent?.build?.model)
-          addToHistory("build", config.agent.build.model);
-      } catch {}
+        const out = await ctx.agent.get({ agentID });
+        if (out.data.model?.id) addToHistory(agentID, out.data.model.id);
+      } catch {
+        // Agent definitions are user-configured; a missing or renamed agent
+        // must not block plugin load — the JSON fallback below still runs.
+      }
     }
-  }
 
-  await loadInitialModels();
-  if (planHistory.length === 0)
-    addToHistory("plan", "anthropic/claude-sonnet-4-5");
-  if (buildHistory.length === 0)
-    addToHistory("build", "anthropic/claude-sonnet-4-5");
+    async function loadInitialModels() {
+      const paths = configPaths(homedir(), ctx.location.directory);
+      for (const path of paths) {
+        try {
+          // Direct file reads replace the V1 `$` shell helper, which is gone
+          // from the V2 plugin context.
+          const content = await readFile(path, "utf8").catch(() => null);
+          if (!content) continue;
+          const stripped = content.replace(/\/\/[^\n]*/g, "");
+          const config = JSON.parse(stripped);
+          if (config.agent?.plan?.model)
+            addToHistory("plan", config.agent.plan.model);
+          if (config.agent?.build?.model)
+            addToHistory("build", config.agent.build.model);
+        } catch {}
+      }
+    }
 
-  return {
-    config: async (cfg) => {
-      const c = cfg as {
-        agent?: { plan?: { model?: string }; build?: { model?: string } };
-      };
-      if (c?.agent?.plan?.model) addToHistory("plan", c.agent.plan.model);
-      if (c?.agent?.build?.model) addToHistory("build", c.agent.build.model);
-    },
+    await loadInitialModels();
+    if (planHistory.length === 0)
+      addToHistory("plan", "anthropic/claude-sonnet-4-5");
+    if (buildHistory.length === 0)
+      addToHistory("build", "anthropic/claude-sonnet-4-5");
 
-    tool: {
-      "fetch-llm-pricing": tool({
+    // Tool definitions use JSON Schema input and structured `{ content }`
+    // results — the V2 replacement for the V1 tool() helper.
+    await ctx.tool.transform((editor) => {
+      editor.add({
+        name: "fetch-llm-pricing",
         description:
           "Re-fetch fresh LLM pricing, context, and features from OpenRouter.",
-        args: {},
+        input: { type: "object", properties: {}, additionalProperties: false },
         async execute() {
-          await fetchOpenRouterData(client);
-          return `✅ Refreshed — ${pricingMap.size} models loaded.`;
+          await fetchOpenRouterData();
+          return {
+            content: `✅ Refreshed — ${pricingMap.size} models loaded.`,
+          };
         },
-      }),
+      });
 
-      "update-llm-selection": tool({
+      editor.add({
+        name: "update-llm-selection",
         description: "Record a model switch for plan or build mode.",
-        args: {
-          mode: tool.schema.enum(["plan", "build"]),
-          model: tool.schema.string(),
+        input: {
+          type: "object",
+          properties: {
+            mode: {
+              type: "string",
+              enum: ["plan", "build"],
+              description: "Agent mode the switch applies to.",
+            },
+            model: {
+              type: "string",
+              description: 'Model slug, e.g. "anthropic/claude-sonnet-4-5".',
+            },
+          },
+          required: ["mode", "model"],
+          additionalProperties: false,
         },
-        async execute(args) {
-          addToHistory(args.mode, args.model);
-          const info = getModelInfo(args.model);
-          const ctx = info.contextLength
+        async execute(input) {
+          const { mode, model } = input as {
+            mode: "plan" | "build";
+            model: string;
+          };
+          addToHistory(mode, model);
+          const info = getModelInfo(model);
+          const ctxLen = info.contextLength
             ? `${Math.round(info.contextLength / 1000)}K`
             : "N/A";
-          return `✅ ${args.mode} → ${info.displayName} (${ctx} ctx)`;
+          return {
+            content: `✅ ${mode} → ${info.displayName} (${ctxLen} ctx)`,
+          };
         },
-      }),
+      });
 
-      "show-llm-pricing": tool({
+      editor.add({
+        name: "show-llm-pricing",
         description:
           "Show pricing + context + features for last 3 models per mode.",
-        args: {},
+        input: { type: "object", properties: {}, additionalProperties: false },
         async execute() {
           let out = "📊 **LLM Pricing + Context + Features**\n\n";
           const render = (name: string, history: string[]) => {
@@ -181,28 +202,21 @@ const server: Plugin = async ({ client, $, directory }) => {
             history.forEach((m, i) => {
               const info = getModelInfo(m);
               const prefix = i === 0 ? "→ " : "  ";
-              const ctx = info.contextLength
+              const ctxLen = info.contextLength
                 ? `${Math.round(info.contextLength / 1000)}K`
                 : "N/A";
               const feat = info.features.length
                 ? ` [${info.features.slice(0, 2).join(", ")}]`
                 : "";
-              out += `${prefix}${info.displayName}: $${info.inputPerM.toFixed(2)} in / $${info.outputPerM.toFixed(2)} out • ${ctx} ctx${feat}\n`;
+              out += `${prefix}${info.displayName}: $${info.inputPerM.toFixed(2)} in / $${info.outputPerM.toFixed(2)} out • ${ctxLen} ctx${feat}\n`;
             });
             out += "\n";
           };
           render("Plan", planHistory);
           render("Build", buildHistory);
-          return out;
+          return { content: out };
         },
-      }),
-    },
-  };
-};
-
-const plugin: PluginModule & { id: string } = {
-  id: "llm-pricing",
-  server,
-};
-
-export default plugin;
+      });
+    });
+  },
+});
