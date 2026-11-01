@@ -53,9 +53,12 @@ export function getModelInfo(model: string): ModelInfo {
   };
 }
 
-async function fetchOpenRouterData(): Promise<void> {
+// The signal makes an in-flight refresh abort when the session stops —
+// OpenCode 2.2 passes the session's AbortSignal to tool executors for exactly
+// this kind of cancellable work.
+export async function fetchOpenRouterData(signal?: AbortSignal): Promise<void> {
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/models");
+    const res = await fetch("https://openrouter.ai/api/v1/models", { signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const models = data.data ?? data;
@@ -143,8 +146,8 @@ export default Plugin.define({
         description:
           "Re-fetch fresh LLM pricing, context, and features from OpenRouter.",
         input: { type: "object", properties: {}, additionalProperties: false },
-        async execute() {
-          await fetchOpenRouterData();
+        async execute(_input, context) {
+          await fetchOpenRouterData(context.signal);
           return {
             content: `✅ Refreshed — ${pricingMap.size} models loaded.`,
           };
