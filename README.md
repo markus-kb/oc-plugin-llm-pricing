@@ -52,7 +52,9 @@ oc-plugin-llm-pricing/
 }
 ```
 
-You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`), an absolute path, or a `file:///` URL. OpenCode resolves it at startup — no build step, no file copying, no npm install.
+You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`), an absolute path, or a `file:///` URL. OpenCode resolves it at startup — no build step and no file copying.
+
+Run `npm install` once inside the clone first: the plugin imports `@opencode/plugin` and `solid-js` at runtime, and OpenCode resolves them from the clone's `node_modules`.
 
 ### Global install (shared across all projects, across machines)
 

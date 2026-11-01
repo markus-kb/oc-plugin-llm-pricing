@@ -58,6 +58,26 @@ cd /path/to/oc-plugin-llm-pricing
 opencode
 ```
 
+### Global install (every project)
+The plugin is also loaded globally from `~/.config/opencode/opencode.jsonc` through the
+`OC_PLUGIN_LLP` environment variable, which points at this checkout:
+
+```jsonc
+{
+  "plugins": ["{env:OC_PLUGIN_LLP}"]
+}
+```
+
+One V2 entry loads both parts; no `tui.json` registration is involved. Two consequences:
+
+- The `.opencode/package.json` pin only governs the project-local load. A globally loaded
+  copy resolves `@opencode/plugin` and `solid-js` from this repo's root `node_modules`, so
+  keep `npm install` up to date or the global load breaks while the project load still works.
+- Running OpenCode inside this repo loads `llm-pricing` twice — once from the project entry
+  (`"../"`) and once from the global entry. That surfaces as a duplicate-plugin error only in
+  this directory and is intentionally tolerated; do not "fix" it by deleting the project config
+  (it is what makes local testing possible).
+
 ### `@opencode/plugin` dependency
 - Root `package.json`: `devDependencies` (type-checking) + `peerDependencies` (>= 2.2.0)
 - `.opencode/package.json` pins an exact version — this is what the OpenCode child process resolves at runtime
