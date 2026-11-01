@@ -58,9 +58,6 @@ function parseModels(data: unknown, pricingMap: Map<string, ModelInfo>): void {
 export default Plugin.define({
   id: "llm-pricing",
   async setup(context) {
-    // TEMP DIAGNOSTIC: proves whether the running TUI process loaded this
-    // source revision. Remove after the slot crash is root-caused.
-    console.log("[llm-pricing] TUI plugin setup — v3 nested-theme build");
     // pricingMap lives in the plugin setup — created once, shared across all
     // slot renders.
     const pricingMap = new Map<string, ModelInfo>();
@@ -130,25 +127,13 @@ export default Plugin.define({
           // normalize at the boundary so the slot render always gets an array.
           return context.data.session.message.list(sessionID) ?? [];
         };
-        try {
-          return (
-            <PricingSide
-              getMessages={getMessages}
-              getModelInfo={getModelInfo}
-              onRefresh={refresh}
-            />
-          );
-        } catch (e) {
-          // TEMP DIAGNOSTIC: the generic slot-crash toast strips location info
-          // ("e.length" on a minified host); render the stack into the slot so
-          // the real throw site is visible. Remove once root-caused.
-          console.error("[llm-pricing] sidebar render failed:", e);
-          return (
-            <text fg="#f43f5e">
-              {String((e as Error)?.stack ?? e).slice(0, 4000)}
-            </text>
-          );
-        }
+        return (
+          <PricingSide
+            getMessages={getMessages}
+            getModelInfo={getModelInfo}
+            onRefresh={refresh}
+          />
+        );
       },
     });
 

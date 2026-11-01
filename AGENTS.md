@@ -35,6 +35,16 @@ export default Plugin.define({
 - V2 assistant messages: `{ type: "assistant", agent, model: { providerID, id } }` — was `{ role, mode, providerID, modelID }`.
 - Slot API has no `order` option; claim order controls placement.
 - `directory` → `ctx.location.directory`.
+- Theme tokens are nested objects in 2.2.x: use `theme.text.base`, `theme.text.muted`,
+  `theme.text.action.primary.base`. The legacy flat keys (`theme.primary`, `theme.text`
+  as a string, `theme.textMuted`) no longer exist; passing an object into `fg=` crashes
+  the slot render with an opaque minified toast (`undefined is not an object (evaluating
+  'e.length')`) instead of naming our code.
+- TUI plugin source is imported into the running TUI process at startup and cached for
+  the process lifetime; the Extensions toggle re-runs `setup` but does not re-read the
+  source. Verify TUI code changes only after exiting and relaunching the TUI.
+- Tool executors receive `context.signal` — pass it to cancellable work (`fetch`) so
+  stopping the session aborts the request.
 
 ## Installation (local development)
 OpenCode loads the plugin via the `plugins` array in `.opencode/opencode.json`

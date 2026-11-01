@@ -132,9 +132,7 @@ export function PricingSide(props: PricingSideProps) {
   return (
     <box flexDirection="column" paddingTop={1}>
       <text fg={theme.text.base} bold>
-        {/* v3 marker: proves the running TUI loaded this revision.
-            Remove together with the diagnostic stack catch in tui.tsx. */}
-        LLM Pricing (v3)
+        LLM Pricing
       </text>
       <ModeSection
         label="Plan"
