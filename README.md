@@ -32,7 +32,10 @@ oc-plugin-llm-pricing/
 ├── tui.tsx            # TUI plugin (sidebar slot registration)
 ├── src/
 │   ├── pricing-side.tsx   # sidebar UI component
-│   └── history.ts         # pure history-derivation logic (unit-tested)
+│   ├── history.ts         # pure history-derivation logic (unit-tested)
+│   ├── config.ts          # pure config-path resolution
+│   └── format.ts          # pure context-length formatting
+├── __tests__/
 ├── package.json
 └── tsconfig.json
 ```
@@ -43,17 +46,17 @@ oc-plugin-llm-pricing/
 // your-project/.opencode/opencode.json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    ["/absolute/path/to/oc-plugin-llm-pricing", { "enabled": true }]
+  "plugins": [
+    "./relative/path/to/oc-plugin-llm-pricing"
   ]
 }
 ```
 
-You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`) or an absolute path. OpenCode resolves it at startup — no build step, no file copying, no npm install.
+You can use a relative path (e.g. `"../../plugins/oc-plugin-llm-pricing"`), an absolute path, or a `file:///` URL. OpenCode resolves it at startup — no build step, no file copying, no npm install.
 
 ### Global install (shared across all projects, across machines)
 
-If you use a shared `opencode.json` / `opencode.jsonc` across multiple machines where the plugin is cloned to different paths, use an environment variable instead of a hard-coded path.
+If you use a shared global config (`~/.config/opencode/opencode.json(c)`) across multiple machines where the plugin is cloned to different paths, use an environment variable instead of a hard-coded path.
 
 OpenCode supports `{env:VAR}` substitution in config files. Set a variable on each machine pointing to wherever the repo is cloned:
 
@@ -63,7 +66,7 @@ Use **forward slashes** in the path. Windows backslashes are invalid escape char
 
 ```
 InvalidEscapeCharacter at line 6, column 6
-  ["C:\Users\you\...\oc-plugin-llm-pricing", { "enabled": true }]
+  ["C:\Users\you\...\oc-plugin-llm-pricing"]
 ```
 
 Set the value with forward slashes to avoid this:
@@ -78,29 +81,19 @@ OC_PLUGIN_LLP = C:/path/to/oc-plugin-llm-pricing
 export OC_PLUGIN_LLP="/home/youruser/plugins/oc-plugin-llm-pricing"
 ```
 
-Then reference it in **both** global config files — OpenCode splits server and TUI loading across two separate files, and a missing entry in either one silently loads only that half of the plugin:
+Then reference it in `~/.config/opencode/opencode.json(c)`:
 
 ```jsonc
-// ~/.config/opencode/opencode.json  — loads the server plugin (chat tools)
+// ~/.config/opencode/opencode.json(c)
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    ["{env:OC_PLUGIN_LLP}", { "enabled": true }]
+  "plugins": [
+    "{env:OC_PLUGIN_LLP}"
   ]
 }
 ```
 
-```jsonc
-// ~/.config/opencode/tui.json  — loads the TUI plugin (sidebar)
-{
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": [
-    ["{env:OC_PLUGIN_LLP}", { "enabled": true }]
-  ]
-}
-```
-
-OpenCode substitutes `{env:OC_PLUGIN_LLP}` before resolving the plugin path. Each machine uses its own local path; the config file stays identical across all of them.
+OpenCode substitutes `{env:OC_PLUGIN_LLP}` before resolving the plugin path. Each machine uses its own local path; the config file stays identical across all of them. One entry loads both parts: OpenCode 2.2's TUI loads the TUI part of every plugin its server loads, so no separate TUI-plugin configuration is needed.
 
 > **Note:** On Windows, newly set System Environment Variables are only picked up by processes started after the variable was set. Restart your terminal (and OpenCode) after adding it.
 
@@ -110,7 +103,7 @@ OpenCode substitutes `{env:OC_PLUGIN_LLP}` before resolving the plugin path. Eac
 
 ### Sidebar panel
 
-The plugin registers a `sidebar_content` slot that renders a live pricing panel alongside the default sidebar. It shows the last 3 models used per agent mode (most-recent first), updating automatically as messages complete. The active model is marked with `→`.
+The plugin registers a `sidebar.content` slot that renders a live pricing panel alongside the default sidebar. It shows the last 3 models used per agent mode (most-recent first), updating automatically as messages complete. The active model is marked with `→`.
 
 ```
 LLM Pricing
@@ -170,22 +163,22 @@ History updates immediately in both the tool output and the sidebar.
 
 1. On startup, fetches the full OpenRouter models list (`https://openrouter.ai/api/v1/models`).
 2. Enriches each model with pricing, context window, and features.
-3. Reads `opencode.json` (global + project) to seed Plan/Build history from configured model slugs.
-4. The `config` hook refines history with the resolved config (moves configured models to front).
+3. Seeds the Plan/Build history from the resolved Plan and Build agent models (`ctx.agent.get`), with a JSON-config fallback if the agent lookup fails.
+4. Registers the three chat tools through `ctx.tool.transform`. Tool execution forwards the session's `AbortSignal` so stopping a session cancels an in-flight OpenRouter refresh.
 5. Falls back gracefully to `$0.00 / N/A` for any model not found in OpenRouter data.
 
 Data is cached in memory for the session. Use `fetch-llm-pricing` or restart OpenCode to refresh.
 
 ### TUI plugin (`tui.tsx` + `src/pricing-side.tsx` + `src/history.ts`)
 
-Registers a `sidebar_content` slot (order 60) that renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
+Claims the `sidebar.content` slot (`context.ui.slot`) and renders `PricingSide` using SolidJS and `@opentui/solid`. The TUI plugin:
 
 1. Fetches OpenRouter data independently at startup (no shared memory with the server process).
-2. Passes a `getMessages` accessor to `PricingSide` — a thin wrapper around `api.state.session.messages(session_id)`, which reads directly from the Solid store for the current session.
+2. Passes a `getMessages` accessor to `PricingSide` built on the slot input's `sessionID` and `context.data.session.message.list(sessionID)`, which reads directly from the Solid store for the current session.
 3. Inside `PricingSide`, two `createMemo` calls derive `planHistory` and `buildHistory` by scanning messages newest-first via the pure `deriveHistory(messages, mode)` function in `src/history.ts`.
 4. Because `getMessages()` reads from the Solid store, the memos re-evaluate automatically on every message update — covering both new messages in a live session and existing messages when a session is resumed or opened.
 
-The slot render function receives `session_id` from `sidebar.tsx` via the second argument (`props`), making the correct session's messages available without any global state or event accumulation.
+The slot render function receives the `sessionID` of the session whose sidebar is open, making the correct session's messages available without any global state or event accumulation.
 
 ---
 
@@ -206,10 +199,12 @@ No build step — OpenCode runs `.ts`/`.tsx` source directly.
 | File | Purpose |
 |---|---|
 | `server.ts` | Server plugin: OpenRouter fetch, pricing map, three chat tools |
-| `tui.tsx` | TUI plugin: factory closure, slot registration, `getMessages` accessor |
+| `tui.tsx` | TUI plugin: slot registration on `sidebar.content`, `getMessages` accessor |
+| `src/config.ts` | Pure config-path resolution for the history-seeding JSON fallback |
 | `src/pricing-side.tsx` | Sidebar component: collapsible Plan/Build sections with reactive history |
-| `src/history.ts` | Pure `deriveHistory(messages, mode)` function — no Solid dependency, unit-tested |
-| `__tests__/display-history.test.ts` | 8 unit tests for `deriveHistory` |
+| `src/history.ts` | Pure `deriveHistory(messages, agent)` function — no Solid dependency, unit-tested |
+| `src/format.ts` | Pure `formatContextLength()` helper |
+| `__tests__/display-history.test.ts` | Unit tests for `deriveHistory` |
 
 ---
 
