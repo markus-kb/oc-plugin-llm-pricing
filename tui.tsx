@@ -123,7 +123,9 @@ export default Plugin.define({
         // re-evaluates reactively whenever the session message store updates.
         const getMessages = () => {
           if (!sessionID) return [];
-          return context.data.session.message.list(sessionID);
+          // The store can be unsynced on a fresh session and return undefined;
+          // normalize at the boundary so the slot render always gets an array.
+          return context.data.session.message.list(sessionID) ?? [];
         };
         return (
           <PricingSide

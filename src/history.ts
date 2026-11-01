@@ -22,9 +22,13 @@ interface AnyMsg {
  * newest occurrence wins (appears at the front).
  */
 export function deriveHistory(
-  messages: ReadonlyArray<AnyMsg>,
+  messages: ReadonlyArray<AnyMsg> | undefined | null,
   agent: string,
 ): string[] {
+  // The TUI message store returns undefined for a fresh session before its
+  // first sync; treat a missing list as "no history" instead of throwing in
+  // the sidebar slot render.
+  if (!messages) return [];
   const seen = new Set<string>();
   const result: string[] = [];
   // Iterate newest-first: the store delivers messages oldest-first.
