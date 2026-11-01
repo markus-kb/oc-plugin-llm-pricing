@@ -127,13 +127,25 @@ export default Plugin.define({
           // normalize at the boundary so the slot render always gets an array.
           return context.data.session.message.list(sessionID) ?? [];
         };
-        return (
-          <PricingSide
-            getMessages={getMessages}
-            getModelInfo={getModelInfo}
-            onRefresh={refresh}
-          />
-        );
+        try {
+          return (
+            <PricingSide
+              getMessages={getMessages}
+              getModelInfo={getModelInfo}
+              onRefresh={refresh}
+            />
+          );
+        } catch (e) {
+          // TEMP DIAGNOSTIC: the generic slot-crash toast strips location info
+          // ("e.length" on a minified host); render the stack into the slot so
+          // the real throw site is visible. Remove once root-caused.
+          console.error("[llm-pricing] sidebar render failed:", e);
+          return (
+            <text fg="#f43f5e">
+              {String((e as Error)?.stack ?? e).slice(0, 4000)}
+            </text>
+          );
+        }
       },
     });
 
