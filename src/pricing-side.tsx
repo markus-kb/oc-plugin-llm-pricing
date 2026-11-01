@@ -35,8 +35,10 @@ interface ModelRowProps {
 }
 
 function ModelRow(props: ModelRowProps) {
-  // Theme tokens come from the plugin context rather than a prop, so each
-  // render resolves the current theme (V1 passed ctx.theme.current down).
+  // Theme tokens come from the plugin context rather than a prop. Theme tokens
+  // are nested objects in the current theme schema (text.base, text.muted,
+  // text.action.primary.base) — the old flat keys (primary, text, textMuted)
+  // no longer exist and crashed the slot render on label color resolution.
   const theme = usePlugin().theme;
   // createMemo re-evaluates when getModelInfo's internal version signal bumps.
   const info = createMemo(() => props.getModelInfo(props.model));
@@ -44,17 +46,19 @@ function ModelRow(props: ModelRowProps) {
   const unknown = () => info().inputPerM === 0 && info().contextLength === null;
   // Active model gets an arrow marker; history entries are indented flush.
   const marker = () => (props.active ? "→" : " ");
+  const labelText = theme.text.base;
+  const labelActive = theme.text.action.primary.base;
 
   return (
     <box flexDirection="column" paddingLeft={2}>
-      <text fg={props.active ? theme.primary : theme.text}>
+      <text fg={props.active ? labelActive : labelText}>
         {marker()} {info().displayName}
       </text>
       <Show
         when={!unknown()}
-        fallback={<text fg={theme.textMuted}>{"   "}pricing unavailable</text>}
+        fallback={<text fg={theme.text.muted}>{"   "}pricing unavailable</text>}
       >
-        <text fg={theme.textMuted}>
+        <text fg={theme.text.muted}>
           {"   "}
           {fmtPrice(info().inputPerM)} in / {fmtPrice(info().outputPerM)} out •{" "}
           {ctx()} ctx
@@ -85,7 +89,7 @@ function ModeSection(props: ModeSectionProps) {
         // onMouseDown is the correct TUI event — onClick does not fire in @opentui/solid.
         onMouseDown={() => setOpen((v) => !v)}
       >
-        <text fg={theme.primary} bold>
+        <text fg={theme.text.action.primary.base} bold>
           {triangle()} {props.label}
         </text>
       </box>
@@ -127,8 +131,10 @@ export function PricingSide(props: PricingSideProps) {
 
   return (
     <box flexDirection="column" paddingTop={1}>
-      <text fg={theme.text} bold>
-        LLM Pricing
+      <text fg={theme.text.base} bold>
+        {/* v3 marker: proves the running TUI loaded this revision.
+            Remove together with the diagnostic stack catch in tui.tsx. */}
+        LLM Pricing (v3)
       </text>
       <ModeSection
         label="Plan"

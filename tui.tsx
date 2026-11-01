@@ -58,6 +58,9 @@ function parseModels(data: unknown, pricingMap: Map<string, ModelInfo>): void {
 export default Plugin.define({
   id: "llm-pricing",
   async setup(context) {
+    // TEMP DIAGNOSTIC: proves whether the running TUI process loaded this
+    // source revision. Remove after the slot crash is root-caused.
+    console.log("[llm-pricing] TUI plugin setup — v3 nested-theme build");
     // pricingMap lives in the plugin setup — created once, shared across all
     // slot renders.
     const pricingMap = new Map<string, ModelInfo>();
