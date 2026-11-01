@@ -49,7 +49,7 @@ opencode
 ```
 
 ### `@opencode/plugin` dependency
-- Root `package.json`: `devDependencies` (type-checking) + `peerDependencies` (>= 2.0.7)
+- Root `package.json`: `devDependencies` (type-checking) + `peerDependencies` (>= 2.2.0)
 - `.opencode/package.json` pins an exact version — this is what the OpenCode child process resolves at runtime
 - Do not reintroduce `@opencode-ai/plugin` (the V1 package) or map manual `tsconfig.json` paths for it
 
